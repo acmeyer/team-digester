@@ -6,6 +6,7 @@ import {
   SayFn,
 } from '@slack/bolt';
 import { app } from './index';
+import { appHomeView } from './blocks';
 import * as logger from 'firebase-functions/logger';
 
 export const appHomeOpenedHandler = async ({ event }: { event: AppHomeOpenedEvent }) => {
@@ -13,18 +14,7 @@ export const appHomeOpenedHandler = async ({ event }: { event: AppHomeOpenedEven
   await app.client.views.publish({
     token: process.env.SLACK_BOT_TOKEN,
     user_id: event.user,
-    view: {
-      type: 'home',
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: 'Hello, World!',
-          },
-        },
-      ],
-    },
+    view: appHomeView('initial'),
   });
 };
 

@@ -347,7 +347,7 @@
   resolved "https://registry.yarnpkg.com/@slack/types/-/types-2.8.0.tgz#11ea10872262a7e6f86f54e5bcd4f91e3a41fe91"
   integrity sha512-ghdfZSF0b4NC9ckBA8QnQgC9DJw2ZceDq0BIjjRSv6XAZBXJdWgxIsYz0TYnWSiqsKZGH2ZXbj9jYABZdH3OSQ==
 
-"@slack/web-api@^6.2.3", "@slack/web-api@^6.3.0", "@slack/web-api@^6.7.1":
+"@slack/web-api@^6.2.3", "@slack/web-api@^6.3.0", "@slack/web-api@^6.7.1", "@slack/web-api@^6.8.1":
   version "6.8.1"
   resolved "https://registry.yarnpkg.com/@slack/web-api/-/web-api-6.8.1.tgz#c6c1e7405c884c4d9048f8b1d3901bd138d00610"
   integrity sha512-eMPk2S99S613gcu7odSw/LV+Qxr8A+RXvBD0GYW510wJuTERiTjP5TgCsH8X09+lxSumbDE88wvWbuFuvGa74g==
@@ -3102,6 +3102,11 @@ side-channel@^1.0.4:
     call-bind "^1.0.0"
     get-intrinsic "^1.0.2"
     object-inspect "^1.9.0"
+
+slack-block-builder@^2.7.2:
+  version "2.7.2"
+  resolved "https://registry.yarnpkg.com/slack-block-builder/-/slack-block-builder-2.7.2.tgz#033a8c5066fc97a89199671cdefce2276d40ca9d"
+  integrity sha512-EhoXDveGZWrHL0+AKnm3wu8n9K9usMjJGlbYLLwMSq62J7Qv+a4lO1iJI+NmCE04dm37d/3OlGKxBVoASnynog==
 
 slash@^3.0.0:
   version "3.0.0"
