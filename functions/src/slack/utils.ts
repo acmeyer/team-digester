@@ -1,25 +1,15 @@
 import { Installation, InstallationQuery } from '@slack/bolt';
 import { app } from './index';
-import { getFirestore } from 'firebase-admin/firestore';
 import * as logger from 'firebase-functions/logger';
-import { DATABASE_COLLECTIONS } from '../constants';
-import { User } from '../types';
-const db = getFirestore();
-db.settings({ ignoreUndefinedProperties: true });
+import { PrismaClient, User, Prisma } from '@prisma/client';
+const prisma = new PrismaClient();
 
-const getInstallationFromDatabase = async (id: string, isEnterpriseInstall: boolean) => {
-  const snapshot = await db
-    .collection(DATABASE_COLLECTIONS.SLACK_INSTALLATIONS)
-    .where('isEnterpriseInstall', '==', isEnterpriseInstall)
-    .where('slackId', '==', id)
-    .limit(1)
-    .get();
-
-  if (snapshot.empty) {
-    return null;
-  } else {
-    return snapshot.docs[0];
-  }
+const getInstallationFromDatabase = async (id: string) => {
+  return await prisma.slackInstallation.findUnique({
+    where: {
+      slackId: id,
+    },
+  });
 };
 
 export const saveInstallation = async (installation: Installation): Promise<void> => {
@@ -36,41 +26,46 @@ export const saveInstallation = async (installation: Installation): Promise<void
   }
 
   if (slackId !== undefined && isEnterpriseInstall !== undefined) {
-    const doc = await getInstallationFromDatabase(slackId, isEnterpriseInstall);
+    const slackInstall = await getInstallationFromDatabase(slackId);
 
-    if (!doc) {
+    if (!slackInstall) {
       // New installation, add to database and create organization
-      const orgRef = await db.collection(DATABASE_COLLECTIONS.ORGANIZATIONS).add({
-        slackId: slackId,
-        name: installation.enterprise?.name || installation.team?.name || '',
-        isSlackEnterprise: isEnterpriseInstall,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+      await prisma.slackInstallation.create({
+        data: {
+          slackId: slackId,
+          isEnterpriseInstall: isEnterpriseInstall,
+          installation: JSON.stringify(installation),
+          organization: {
+            create: {
+              slackId: slackId,
+              name: installation.enterprise?.name || installation.team?.name || '',
+              isSlackEnterprise: isEnterpriseInstall,
+            },
+          },
+        },
       });
-      await db.collection(DATABASE_COLLECTIONS.SLACK_INSTALLATIONS).add({
-        orgId: orgRef.id,
-        slackId: slackId,
-        isEnterpriseInstall: isEnterpriseInstall,
-        installation: installation,
-        installedAt: new Date(),
-        updatedAt: new Date(),
-      });
+
       await findOrCreateUser(installation.user.id, slackId);
       return;
     } else {
       logger.info('Installation already exists, updating...', installation, {
         structuredData: true,
       });
-      await doc.ref.update({
-        installation: {
-          ...doc.data().installation,
-          user: installation.user,
-          appId: installation.appId,
-          authversion: installation.authVersion,
-          bot: installation.bot,
+      await prisma.slackInstallation.update({
+        where: {
+          slackId: slackId,
         },
-        updatedAt: new Date(),
+        data: {
+          installation: {
+            ...(slackInstall.installation as Prisma.JsonObject),
+            user: installation.user,
+            appId: installation.appId,
+            authversion: installation.authVersion,
+            bot: installation.bot,
+          },
+        },
       });
+
       await findOrCreateUser(installation.user.id, slackId);
       return;
     }
@@ -82,97 +77,80 @@ export const getInstallation = async (
   installQuery: InstallationQuery<boolean>
 ): Promise<Installation<'v1' | 'v2', boolean>> => {
   logger.info('fetchInstallation', installQuery, { structuredData: true });
-  let doc;
+  let installation;
   if (installQuery.isEnterpriseInstall && installQuery.enterpriseId !== undefined) {
-    doc = await getInstallationFromDatabase(installQuery.enterpriseId, true);
+    installation = await getInstallationFromDatabase(installQuery.enterpriseId);
   } else if (installQuery.teamId !== undefined) {
-    doc = await getInstallationFromDatabase(installQuery.teamId, false);
+    installation = await getInstallationFromDatabase(installQuery.teamId);
   } else {
     throw new Error('Failed fetching installation');
   }
-  if (!doc) {
+  if (!installation) {
     throw new Error('Failed fetching installation');
   }
-  return doc.data().installation;
+
+  // Not sure about this
+  const installationData = installation.installation as unknown as Installation<
+    'v1' | 'v2',
+    boolean
+  >;
+  return installationData;
 };
 
 export const deleteInstallation = async (
   installQuery: InstallationQuery<boolean>
 ): Promise<void> => {
   logger.info('deleteInstallation', installQuery, { structuredData: true });
-  let doc;
+
+  let installationId;
   if (installQuery.isEnterpriseInstall && installQuery.enterpriseId !== undefined) {
-    doc = await getInstallationFromDatabase(installQuery.enterpriseId, true);
+    installationId = installQuery.enterpriseId;
   } else if (installQuery.teamId !== undefined) {
-    doc = await getInstallationFromDatabase(installQuery.teamId, false);
+    installationId = installQuery.teamId;
   } else {
     throw new Error('Failed deleting installation');
   }
-  if (doc) {
-    await doc.ref.delete();
-    return;
-  }
-  return;
+  await prisma.slackInstallation.delete({
+    where: {
+      slackId: installationId,
+    },
+  });
 };
 
 export const findOrCreateUser = async (slackId: string, slackOrgId: string): Promise<User> => {
   logger.info('findOrCreateUser', slackId, slackOrgId, { structuredData: true });
-  const snapshot = await db
-    .collection(DATABASE_COLLECTIONS.USERS)
-    .where('slackId', '==', slackId)
-    .limit(1)
-    .get();
 
-  if (!snapshot.empty) {
-    const userData = snapshot.docs[0].data();
-    return {
-      id: snapshot.docs[0].id,
-      email: userData.email,
-      pictureUrl: userData.pictureUrl,
-      name: userData.name,
-      firstName: userData.firstName,
-      lastName: userData.lastName,
-      slackId: userData.slackId,
-      organizations: userData.organizations,
-      createdAt: userData.createdAt.toDate(),
-      updatedAt: userData.updatedAt.toDate(),
-    };
-  }
-
-  // Get user info from Slack and organization from database
-  const [slackUserData, orgSnapshot] = await Promise.all([
-    app.client.users.profile.get({
-      token: process.env.SLACK_BOT_TOKEN,
-      user: slackId,
-    }),
-    db
-      .collection(DATABASE_COLLECTIONS.ORGANIZATIONS)
-      .where('slackId', '==', slackOrgId)
-      .limit(1)
-      .get(),
-  ]);
-
-  // Create the user
-  const orgDoc = orgSnapshot.docs[0];
-  const userData = {
-    slackId: slackId,
-    email: slackUserData?.profile?.email,
-    pictureUrl: slackUserData?.profile?.image_512,
-    firstName: slackUserData?.profile?.first_name,
-    lastName: slackUserData?.profile?.last_name,
-    name: slackUserData?.profile?.real_name,
-    organizations: [orgDoc.id],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-  const userRef = await db.collection(DATABASE_COLLECTIONS.USERS).add(userData);
-  await orgDoc.ref.collection(DATABASE_COLLECTIONS.MEMBERS).add({
-    userId: userRef.id,
-    ...userData,
+  const user = await prisma.user.findUnique({
+    where: {
+      slackId: slackId,
+    },
   });
 
-  return {
-    id: userRef.id,
-    ...userData,
-  };
+  if (!user) {
+    const slackUserData = await app.client.users.profile.get({
+      token: process.env.SLACK_BOT_TOKEN,
+      user: slackId,
+    });
+
+    // Create the user
+    const user = await prisma.user.create({
+      data: {
+        slackId: slackId,
+        email: slackUserData?.profile?.email,
+        pictureUrl: slackUserData?.profile?.image_512,
+        firstName: slackUserData?.profile?.first_name,
+        lastName: slackUserData?.profile?.last_name,
+        name: slackUserData?.profile?.real_name,
+        organizations: {
+          connect: {
+            slackId: slackOrgId,
+          },
+        },
+      },
+    });
+
+    return user;
+  }
+
+  return user;
 };

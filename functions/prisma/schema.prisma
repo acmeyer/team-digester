@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(dbgenerated("nanoid(14)"))
+  slackId       String         @unique
+  name          String?
+  firstName     String?
+  lastName      String?
+  email         String?
+  organizations Organization[]
+  teams         Team[]
+  pictureUrl    String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Organization {
+  id                 String              @id @default(dbgenerated("nanoid(14)"))
+  name               String?
+  slackId            String              @unique
+  isSlackEnterprise  Boolean             @default(false)
+  teams              Team[]
+  members            User[]
+  slackInstallations SlackInstallation[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model SlackInstallation {
+  id                  String       @id @default(dbgenerated("nanoid(14)"))
+  slackId             String       @unique
+  isEnterpriseInstall Boolean      @default(false)
+  installation        Json
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id])
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+}
+
+model Team {
+  id             String       @id @default(dbgenerated("nanoid(14)"))
+  name           String?
+  slackId        String?
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String
+  members        User[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}

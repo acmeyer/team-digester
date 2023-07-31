@@ -22,6 +22,7 @@ const expressReceiver = new ExpressReceiver({
   },
   installerOptions: {
     directInstall: true,
+    stateVerification: process.env.ENVIRONMENT === 'production' ? true : false,
   },
   clientId: process.env.SLACK_CLIENT_ID,
   clientSecret: process.env.SLACK_CLIENT_SECRET,
