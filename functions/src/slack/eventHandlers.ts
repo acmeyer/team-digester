@@ -4,17 +4,33 @@ import {
   AppUninstalledEvent,
   BasicSlackEvent,
   SayFn,
+  HomeView,
 } from '@slack/bolt';
 import { app } from './index';
-import { appHomeView } from './blocks';
+import { createAppHomeView } from './blocks';
 import * as logger from 'firebase-functions/logger';
 
+export interface HomeViewWithTeam extends HomeView {
+  team_id: string;
+}
+
 export const appHomeOpenedHandler = async ({ event }: { event: AppHomeOpenedEvent }) => {
-  logger.info('app_home_opened', event, { structuredData: true });
+  logger.info('appHomeOpenedHandler', event, { structuredData: true });
+
+  if (event.tab !== 'home') {
+    return;
+  }
+
+  const user = event.user;
+  const view = event.view as HomeViewWithTeam;
+  const teamId = view.team_id;
+
+  logger.info('appHomeOpenedHandler:teamId', teamId, { structuredData: true });
+  const homeView = await createAppHomeView(user, teamId);
   await app.client.views.publish({
     token: process.env.SLACK_BOT_TOKEN,
     user_id: event.user,
-    view: appHomeView('initial'),
+    view: homeView,
   });
 };
 
