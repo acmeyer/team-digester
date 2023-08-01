@@ -1,16 +1,13 @@
 /* eslint-disable max-len */
 import { KnownBlock, HomeView } from '@slack/bolt';
 import * as logger from 'firebase-functions/logger';
-import {
-  IntegrationApplication,
-  IntegrationProviderAccount,
-  Organization,
-  User,
-} from '@prisma/client';
+import { IntegrationProviderAccount, Organization, User } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import * as crypto from 'crypto';
+import { flatMap } from 'lodash';
 import { OauthStateStore, OrganizationWithIntegrationConnections } from '../types';
+import { OAUTH_INTEGRATIONS, OAuthIntegrations, OAuthProvider } from '../lib/oauth';
 
 export const createAppHomeView = async (
   slackUserId: string,
@@ -19,7 +16,7 @@ export const createAppHomeView = async (
   logger.info('createAppHomeView', slackUserId, slackOrgId, { structuredData: true });
 
   // Determine blocks to show based on user, organization, and team states
-  const [user, organization, integrations] = await Promise.all([
+  const [user, organization] = await Promise.all([
     prisma.user.findUnique({
       where: {
         slackId: slackUserId,
@@ -37,8 +34,8 @@ export const createAppHomeView = async (
         integrationConnections: true,
       },
     }),
-    prisma.integrationApplication.findMany(),
   ]);
+  const integrations = OAUTH_INTEGRATIONS;
 
   if (!user || !organization) {
     // Something went wrong, user and org should exist
@@ -118,7 +115,7 @@ const returningUserSection = (user: User): KnownBlock[] => {
 const initialIntegrationsSection = (
   user: User,
   organization: OrganizationWithIntegrationConnections,
-  integrations: IntegrationApplication[]
+  integrations: OAuthIntegrations
 ): KnownBlock[] => {
   return [
     {
@@ -135,7 +132,7 @@ const initialIntegrationsSection = (
 const initialTeamsSection = (
   user: User,
   organization: OrganizationWithIntegrationConnections,
-  integrations: IntegrationApplication[]
+  integrations: OAuthIntegrations
 ): KnownBlock[] => {
   return [
     {
@@ -176,38 +173,41 @@ const teamsSection = (user: User, organization: Organization): KnownBlock[] => {
 };
 
 const integrationBlocks = (
-  integration: IntegrationApplication,
+  integration: OAuthProvider,
   organization: OrganizationWithIntegrationConnections,
   user: User
 ): KnownBlock[] => {
   const integrationConnections = organization.integrationConnections;
   const integrationConnection = integrationConnections.find(
-    (ic: IntegrationProviderAccount) => ic.integrationApplicationId === integration.id
+    (ic: IntegrationProviderAccount) => ic.provider === integration.value
   );
   const state = crypto.randomBytes(16).toString('hex');
   const stateData: OauthStateStore = {
-    integrationId: integration.id,
     organizationId: organization.id,
     userId: user.id,
   };
   redis.set(`oauth:state:${state}`, JSON.stringify(stateData));
 
+  const headerBlocks = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*${integration.label}*`,
+      },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `${integration.description}`,
+      },
+    },
+  ] as KnownBlock[];
+
   if (integrationConnection) {
     return [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*${integration.name}*`,
-        },
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `${integration.description}`,
-        },
-      },
+      ...headerBlocks,
       {
         type: 'context',
         elements: [
@@ -221,29 +221,21 @@ const integrationBlocks = (
   }
 
   return [
+    ...headerBlocks,
     {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*${integration.name}*`,
-      },
-    },
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `${integration.description}`,
-      },
-      accessory: {
-        type: 'button',
-        text: {
-          type: 'plain_text',
-          text: `Connect to ${integration.name}`,
-          emoji: true,
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: {
+            type: 'plain_text',
+            text: `Connect ${integration.label}`,
+            emoji: true,
+          },
+          action_id: 'connect_integration',
+          url: `${integration.getAuthorizationUrl(state)}`,
         },
-        action_id: 'connect_integration',
-        url: `${integration.authorizeUrl}&state=${state}`,
-      },
+      ],
     },
   ];
 };
@@ -251,9 +243,9 @@ const integrationBlocks = (
 const integrationsSection = (
   user: User,
   organization: OrganizationWithIntegrationConnections,
-  integrations: IntegrationApplication[]
+  integrations: OAuthIntegrations
 ): KnownBlock[] => {
-  const detailsSection = integrations.flatMap((integration) => {
+  const detailsSection = flatMap(integrations, (integration: OAuthProvider) => {
     return integrationBlocks(integration, organization, user);
   });
 

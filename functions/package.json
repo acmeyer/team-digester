@@ -26,7 +26,8 @@
     "express": "^4.18.2",
     "firebase-admin": "^11.8.0",
     "firebase-functions": "^4.3.1",
-    "helmet": "^7.0.0"
+    "helmet": "^7.0.0",
+    "lodash": "^4.17.21"
   },
   "devDependencies": {
     "@types/compression": "^1.7.2",
@@ -42,8 +43,7 @@
     "typescript": "^4.9.0"
   },
   "prisma": {
-    "schema": "src/db/schema.prisma",
-    "seed": "ts-node src/db/seed.ts"
+    "schema": "src/db/schema.prisma"
   },
   "private": true
 }

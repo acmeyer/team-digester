@@ -28,9 +28,9 @@ module.exports = {
     'quote-props': 0,
     indent: 0,
     'max-len': ['error', { code: 120 }],
-    'operator-linebreak': ['error', 'before'],
     quotes: ['error', 'single', { avoidEscape: true }],
     'new-cap': ['error', { newIsCap: true, capIsNew: false }],
     'require-jsdoc': 0,
+    'operator-linebreak': 0,
   },
 };

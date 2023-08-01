@@ -4,35 +4,30 @@ import * as logger from 'firebase-functions/logger';
 import { redis } from '../lib/redis';
 import { prisma } from '../lib/prisma';
 import { OauthStateStore } from '../types';
+import { OAUTH_INTEGRATIONS } from '../lib/oauth';
 
 router.get('/health_check', (_req, res) => {
   res.send('Ok');
 });
 
 router.get('/oauth/:provider/callback', async (req, res) => {
-  const { provider } = req.params;
+  const { provider } = req.params as { provider: 'github' | 'jira' };
   const { searchParams } = new URL(req.url, process.env.API_BASE_URL);
   const code = searchParams.get('code');
   const state = searchParams.get('state');
 
-  logger.info('oauth callback', provider, code, state, { structuredData: true });
+  logger.info('OAuth Callback', provider, code, state, { structuredData: true });
 
   if (!code || !state) {
     throw new Error('Missing code or state');
   }
 
   const stateData = (await redis.get(`oauth:state:${state}`)) as OauthStateStore;
-  const { integrationId, organizationId, userId } = stateData;
-  const [organization, integration, user] = await Promise.all([
+  const { organizationId, userId } = stateData;
+  const [organization, user] = await Promise.all([
     prisma.organization.findUnique({
       where: {
         id: organizationId,
-      },
-    }),
-    prisma.integrationApplication.findUnique({
-      where: {
-        id: integrationId,
-        provider: provider,
       },
     }),
     prisma.user.findUnique({
@@ -41,12 +36,13 @@ router.get('/oauth/:provider/callback', async (req, res) => {
       },
     }),
   ]);
+  const integration = OAUTH_INTEGRATIONS[provider];
 
-  if (!organization || !integration || !user) {
+  if (!organization || !user || !integration) {
     throw new Error('Invalid request');
   }
 
-  const resp = await fetch(`${integration.tokenUrl}`, {
+  const resp = await fetch(`${integration.tokenUri}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -58,12 +54,12 @@ router.get('/oauth/:provider/callback', async (req, res) => {
       code: code,
       grant_type: 'authorization_code',
       scope: integration.scope,
-      redirect_uri: integration.callbackUrl,
+      redirect_uri: integration.redirectUri,
       state: state,
     }),
   });
   const data = await resp.json();
-  console.log('data', data);
+  console.log('integration auth data', data);
 
   await prisma.integrationProviderAccount.create({
     data: {
@@ -73,7 +69,6 @@ router.get('/oauth/:provider/callback', async (req, res) => {
       refreshToken: data.refresh_token,
       expiresIn: data.expires_in,
       scope: data.scope,
-      integrationApplicationId: integration.id,
       organizationId: organization.id,
       userId: user.id,
     },
@@ -81,7 +76,7 @@ router.get('/oauth/:provider/callback', async (req, res) => {
 
   // TODO: set up webhooks and other integration things
 
-  return res.redirect(`slack://app?team=${organization.id}&id=${process.env.SLACK_APP_ID}`);
+  return res.redirect(`https://slack.com/app_redirect?app=${process.env.SLACK_APP_ID}`);
 });
 
 export default router;
