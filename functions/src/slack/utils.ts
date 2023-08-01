@@ -1,8 +1,9 @@
 import { Installation, InstallationQuery } from '@slack/bolt';
 import { app } from './index';
 import * as logger from 'firebase-functions/logger';
-import { PrismaClient, User, Prisma } from '@prisma/client';
-const prisma = new PrismaClient();
+import { User, Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma';
+import { Config } from '../config';
 
 const getInstallationFromDatabase = async (id: string) => {
   return await prisma.slackInstallation.findUnique({
@@ -131,7 +132,7 @@ export const findOrCreateUser = async (slackId: string, slackOrgId: string): Pro
   }
 
   const slackUserData = await app.client.users.profile.get({
-    token: process.env.SLACK_BOT_TOKEN,
+    token: Config.SLACK_BOT_TOKEN,
     user: slackId,
   });
 

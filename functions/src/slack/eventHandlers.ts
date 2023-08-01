@@ -8,6 +8,7 @@ import {
 } from '@slack/bolt';
 import { app } from './index';
 import { createAppHomeView } from './blocks';
+import { Config } from '../config';
 import * as logger from 'firebase-functions/logger';
 
 export interface HomeViewWithTeam extends HomeView {
@@ -27,7 +28,7 @@ export const appHomeOpenedHandler = async ({ event }: { event: AppHomeOpenedEven
 
   const homeView = await createAppHomeView(user, teamId);
   await app.client.views.publish({
-    token: process.env.SLACK_BOT_TOKEN,
+    token: Config.SLACK_BOT_TOKEN,
     user_id: event.user,
     view: homeView,
   });

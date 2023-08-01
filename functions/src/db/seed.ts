@@ -1,19 +1,20 @@
-/* eslint-disable max-len */
-/* eslint-disable require-jsdoc */
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
+import { Config } from '../config';
 
 async function main() {
   const githubScopes = 'user project repo read:org';
-  const githubRedirectUrl = `${process.env.API_ROOT_DOMAIN}/oauth/github/callback`;
-  const githubAuthorizeUrl = `https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID}&scope=${githubScopes}&redirect_uri=${githubRedirectUrl}`;
+  const githubRedirectUrl = `${Config.API_BASE_URL}/oauth/github/callback`;
+  const githubAuthorizeUrl = `https://github.com/login/oauth/authorize?client_id=${
+    Config.GITHUB_CLIENT_ID
+  }&scope=${encodeURIComponent(githubScopes)}&redirect_uri=${githubRedirectUrl}`;
   const github = await prisma.integrationApplication.create({
     data: {
       name: 'GitHub',
-      description: 'GitHub integration',
+      description:
+        "Connect your GitHub account to stay updated on all of your team's activity on your codebase.",
       logoUrl: '',
-      clientId: process.env.GITHUB_CLIENT_ID,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET,
+      clientId: Config.GITHUB_CLIENT_ID,
+      clientSecret: Config.GITHUB_CLIENT_SECRET,
       authorizeUrl: githubAuthorizeUrl,
       callbackUrl: githubRedirectUrl,
       scope: githubScopes,
@@ -23,15 +24,18 @@ async function main() {
   });
 
   const jiraScopes = 'read:me read:jira-work read:jira-user manage:jira-webhook';
-  const jiraRedirectUrl = `${process.env.API_ROOT_DOMAIN}/oauth/jira/callback&response_type=code&prompt=consent`;
-  const jiraAuthorizeUrl = `https://auth.atlassian.com/authorize?audience=api.atlassian.com&client_id=${process.env.JIRA_CLIENT_ID}&scope=${jiraScopes}&redirect_uri=${jiraRedirectUrl}`;
+  const jiraRedirectUrl = `${Config.API_BASE_URL}/oauth/jira/callback&response_type=code&prompt=consent`;
+  const jiraAuthorizeUrl = `https://auth.atlassian.com/authorize?audience=api.atlassian.com&client_id=${
+    Config.JIRA_CLIENT_ID
+  }&scope=${encodeURIComponent(jiraScopes)}&redirect_uri=${jiraRedirectUrl}`;
   const jira = await prisma.integrationApplication.create({
     data: {
       name: 'JIRA',
-      description: 'JIRA integration',
+      description:
+        "Connect your JIRA account to stay updated on all of your team's activity across your projects.",
       logoUrl: '',
-      clientId: process.env.JIRA_CLIENT_ID,
-      clientSecret: process.env.JIRA_CLIENT_SECRET,
+      clientId: Config.JIRA_CLIENT_ID,
+      clientSecret: Config.JIRA_CLIENT_SECRET,
       authorizeUrl: jiraAuthorizeUrl,
       callbackUrl: jiraRedirectUrl,
       scope: jiraScopes,

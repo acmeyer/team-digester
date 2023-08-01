@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import routes from './routes';
 import { errorHandler } from './errors';
+import { Config } from '../config';
 import { onRequest } from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
 
@@ -38,10 +39,8 @@ app.use(errorHandler);
 
 const server = onRequest(
   {
-    minInstances: process.env.API_MIN_INSTANCES ? parseInt(process.env.API_MIN_INSTANCES) : 0,
-    timeoutSeconds: process.env.API_TIMEOUT_SECONDS
-      ? parseInt(process.env.API_TIMEOUT_SECONDS)
-      : 60,
+    minInstances: Config.API_MIN_INSTANCE ? parseInt(Config.API_MIN_INSTANCE) : 0,
+    timeoutSeconds: Config.API_TIMEOUT_SECONDS ? parseInt(Config.API_TIMEOUT_SECONDS) : 60,
   },
   app
 );

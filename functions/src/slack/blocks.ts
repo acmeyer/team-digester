@@ -1,18 +1,16 @@
 /* eslint-disable max-len */
-import { HomeView } from '@slack/bolt';
+import { KnownBlock, HomeView } from '@slack/bolt';
 import * as logger from 'firebase-functions/logger';
-import { Organization, PrismaClient, User } from '@prisma/client';
-const prisma = new PrismaClient();
 import {
-  HomeTab,
-  Header,
-  Divider,
-  Section,
-  Actions,
-  setIfTruthy,
-  setIfFalsy,
-  Button,
-} from 'slack-block-builder';
+  IntegrationApplication,
+  IntegrationProviderAccount,
+  Organization,
+  User,
+} from '@prisma/client';
+import { prisma } from '../lib/prisma';
+import { redis } from '../lib/redis';
+import * as crypto from 'crypto';
+import { OauthStateStore, OrganizationWithIntegrationConnections } from '../types';
 
 export const createAppHomeView = async (
   slackUserId: string,
@@ -52,81 +50,248 @@ export const createAppHomeView = async (
 
   const isNewUser = user.teams.length < 1;
   const orgHasIntegrations = organization.integrationConnections.length > 0;
-  // const orgHasTeams = organization.teams.length > 0;
+  const orgHasTeams = organization.teams.length > 0;
 
-  return HomeTab()
-    .blocks(
-      setIfTruthy(isNewUser, newUserBlocks(user)),
-      setIfFalsy(isNewUser, returningUserBlocks(user)),
-      setIfFalsy(orgHasIntegrations, [
-        Section().text(
-          'To get started, you will need to connect Team Digester to the apps and services that your team uses:'
-        ),
-        ...integrations
-          .map((integration) => [
-            Section().text(`Add ${integration.name} integration`),
-            Actions().elements(
-              Button({
-                text: `Connect ${integration.name}`,
-                actionId: `connect_${integration.id}`,
-              }).primary()
-            ),
-          ])
-          .flat(),
-      ]),
-      setIfTruthy(orgHasIntegrations, [
-        ...teamsBlocks(user, organization),
-        ...integrationBlocks(organization),
-        ...settingsBlocks(user),
-      ])
-    )
-    .buildToObject();
+  return {
+    type: 'home',
+    blocks: [
+      ...(isNewUser ? newUserSection(user) : returningUserSection(user)),
+      ...(!orgHasIntegrations
+        ? initialIntegrationsSection(user, organization, integrations)
+        : !orgHasTeams
+        ? initialTeamsSection(user, organization, integrations)
+        : [
+            ...teamsSection(user, organization),
+            ...integrationsSection(user, organization, integrations),
+            ...settingsSection(user),
+          ]),
+    ],
+  };
 };
 
-const newUserBlocks = (user: User) => {
+const newUserSection = (user: User): KnownBlock[] => {
   return [
-    Header().text(
-      `Welcome to Team Digester${user?.firstName ? ', ' + user.firstName : ''}! :wave:`
-    ),
-    Divider(),
-    Section().text(
-      'Team Digester is an app for helping teams stay updated on what everyone is doing and coordinate efforts through easy communication and intelligent alerts. No more need for daily standups or weekly status meetings!'
-    ),
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: `Welcome to Team Digester${user?.firstName ? ', ' + user.firstName : ''}! :wave:`,
+        emoji: true,
+      },
+    },
+    {
+      type: 'divider',
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: 'Team Digester is an app for helping teams stay updated on what everyone is doing and coordinate efforts through easy communication and intelligent alerts. No more need for daily standups or weekly status meetings!',
+      },
+    },
   ];
 };
 
-const returningUserBlocks = (user: User) => {
+const returningUserSection = (user: User): KnownBlock[] => {
   return [
-    Header().text(`Welcome back, ${user.firstName}! :wave:`),
-    Divider(),
-    Section().text(
-      "Check out the latest updates from your teams, make changes to your settings, or connect new integrations below. If you ever have any questions, don't hesitate to reach out to me by sending me a message in the Messages tab!"
-    ),
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: `Welcome back, ${user.firstName}! :wave:`,
+        emoji: true,
+      },
+    },
+    {
+      type: 'divider',
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: "Check out the latest updates from your teams, make changes to your settings, or connect new integrations below. If you ever have any questions, don't hesitate to reach out to me by sending me a message in the Messages tab!",
+      },
+    },
   ];
 };
 
-const teamsBlocks = (user: User, organization: Organization) => {
+const initialIntegrationsSection = (
+  user: User,
+  organization: OrganizationWithIntegrationConnections,
+  integrations: IntegrationApplication[]
+): KnownBlock[] => {
   return [
-    Header().text('Teams'),
-    Divider(),
-    Section().text(
-      `TODO: List teams from ${organization.name} and ones that ${user.firstName} is a member of here`
-    ),
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: 'To get started, connect Team Digester to the apps and services that your team uses:',
+      },
+    },
+    ...integrationsSection(user, organization, integrations),
   ];
 };
 
-const integrationBlocks = (organization: Organization) => {
+const initialTeamsSection = (
+  user: User,
+  organization: OrganizationWithIntegrationConnections,
+  integrations: IntegrationApplication[]
+): KnownBlock[] => {
   return [
-    Header().text('Integrations'),
-    Divider(),
-    Section().text(`TODO: List of integrations for ${organization.name} here`),
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: 'Once you have your integrations connected, create a team:',
+      },
+    },
+    ...integrationsSection(user, organization, integrations),
+    ...teamsSection(user, organization),
   ];
 };
 
-const settingsBlocks = (user: User) => {
+const teamsSection = (user: User, organization: Organization): KnownBlock[] => {
+  // const orgTeams = organization.teams;
+  // const userTeams = user.teams;
   return [
-    Header().text('Settings'),
-    Divider(),
-    Section().text(`TODO: ${user.firstName}'s settings here`),
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: 'Teams',
+        emoji: true,
+      },
+    },
+    {
+      type: 'divider',
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `TODO: List teams from ${organization.name} and ones that ${user.firstName} is a member of here`,
+      },
+    },
+  ];
+};
+
+const integrationBlocks = (
+  integration: IntegrationApplication,
+  organization: OrganizationWithIntegrationConnections,
+  user: User
+): KnownBlock[] => {
+  const integrationConnections = organization.integrationConnections;
+  const integrationConnection = integrationConnections.find(
+    (ic: IntegrationProviderAccount) => ic.integrationApplicationId === integration.id
+  );
+  const state = crypto.randomBytes(16).toString('hex');
+  const stateData: OauthStateStore = {
+    integrationId: integration.id,
+    organizationId: organization.id,
+    userId: user.id,
+  };
+  redis.set(`oauth:state:${state}`, JSON.stringify(stateData));
+
+  if (integrationConnection) {
+    return [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*${integration.name}*`,
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${integration.description}`,
+        },
+      },
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: ':white_check_mark: Connected',
+          },
+        ],
+      },
+    ];
+  }
+
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*${integration.name}*`,
+      },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `${integration.description}`,
+      },
+      accessory: {
+        type: 'button',
+        text: {
+          type: 'plain_text',
+          text: `Connect to ${integration.name}`,
+          emoji: true,
+        },
+        action_id: 'connect_integration',
+        url: `${integration.authorizeUrl}&state=${state}`,
+      },
+    },
+  ];
+};
+
+const integrationsSection = (
+  user: User,
+  organization: OrganizationWithIntegrationConnections,
+  integrations: IntegrationApplication[]
+): KnownBlock[] => {
+  const detailsSection = integrations.flatMap((integration) => {
+    return integrationBlocks(integration, organization, user);
+  });
+
+  return [
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: 'Integrations',
+        emoji: true,
+      },
+    },
+    {
+      type: 'divider',
+    },
+    ...detailsSection,
+  ];
+};
+
+const settingsSection = (user: User): KnownBlock[] => {
+  return [
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: 'Settings',
+        emoji: true,
+      },
+    },
+    {
+      type: 'divider',
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `TODO: ${user.firstName}'s settings here`,
+      },
+    },
   ];
 };

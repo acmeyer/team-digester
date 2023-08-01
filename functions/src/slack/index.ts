@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import { Config } from '../config';
 import { onRequest } from 'firebase-functions/v2/https';
 import { App, ExpressReceiver, LogLevel } from '@slack/bolt';
 import {
@@ -7,12 +7,13 @@ import {
   appMentionHandler,
   appDirectMessageHandler,
 } from './eventHandlers';
+import { connectIntegrationHandler } from './actionHandlers';
 import { slackErrorHandler } from './errors';
 import { saveInstallation, getInstallation, deleteInstallation } from './utils';
 
 const expressReceiver = new ExpressReceiver({
-  logLevel: process.env.ENVIRONMENT === 'production' ? LogLevel.ERROR : LogLevel.DEBUG,
-  signingSecret: process.env.SLACK_SIGNING_SECRET as string,
+  logLevel: Config.ENVIRONMENT === 'production' ? LogLevel.ERROR : LogLevel.DEBUG,
+  signingSecret: Config.SLACK_SIGNING_SECRET as string,
   endpoints: '/slack/events',
   processBeforeResponse: true,
   installationStore: {
@@ -22,11 +23,11 @@ const expressReceiver = new ExpressReceiver({
   },
   installerOptions: {
     directInstall: true,
-    stateVerification: process.env.ENVIRONMENT === 'production' ? true : false,
+    stateVerification: Config.ENVIRONMENT === 'production' ? true : false,
   },
-  clientId: process.env.SLACK_CLIENT_ID,
-  clientSecret: process.env.SLACK_CLIENT_SECRET,
-  stateSecret: process.env.SLACK_STATE_SECRET,
+  clientId: Config.SLACK_CLIENT_ID,
+  clientSecret: Config.SLACK_CLIENT_SECRET,
+  stateSecret: Config.SLACK_STATE_SECRET,
   scopes: [
     'app_mentions:read',
     'channels:history',
@@ -49,15 +50,15 @@ app.event('app_home_opened', appHomeOpenedHandler);
 app.event('app_mention', appMentionHandler);
 app.event('message', appDirectMessageHandler);
 app.event('app_uninstalled', appUninstalledHandler);
+// Action listeners
+app.action('connect_integration', connectIntegrationHandler);
 // Error handler
 app.error(slackErrorHandler);
 
 const slackApp = onRequest(
   {
-    minInstances: process.env.SLACK_MIN_INSTANCES ? parseInt(process.env.SLACK_MIN_INSTANCES) : 0,
-    timeoutSeconds: process.env.SLACK_TIMEOUT_SECONDS
-      ? parseInt(process.env.SLACK_TIMEOUT_SECONDS)
-      : 60,
+    minInstances: Config.SLACK_MIN_INSTANCE ? parseInt(Config.SLACK_MIN_INSTANCE) : 0,
+    timeoutSeconds: Config.SLACK_TIMEOUT_SECONDS ? parseInt(Config.SLACK_TIMEOUT_SECONDS) : 60,
   },
   expressReceiver.app
 );

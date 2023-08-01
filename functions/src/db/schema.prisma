@@ -63,15 +63,15 @@ model Team {
 
 model IntegrationApplication {
   id           String   @id @default(dbgenerated("nanoid(14)"))
-  name         String?
-  description  String?
-  authorizeUrl String?
+  name         String
+  description  String
+  authorizeUrl String
   logoUrl      String?
-  callbackUrl  String?
-  clientId     String?
-  clientSecret String?
+  callbackUrl  String
+  clientId     String
+  clientSecret String
   scope        String?
-  provider     String?
+  provider     String
   tokenUrl     String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -82,7 +82,7 @@ model IntegrationApplication {
 model IntegrationProviderAccount {
   id                       String   @id @default(dbgenerated("nanoid(14)"))
   provider                 String
-  uid                      String
+  uid                      String?
   data                     Json
   accessToken              String?
   refreshToken             String?
@@ -90,11 +90,11 @@ model IntegrationProviderAccount {
   scope                    String?
   userId                   String
   integrationApplicationId String
-  organizationId           String?
+  organizationId           String
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
   integrationApplication IntegrationApplication @relation(fields: [integrationApplicationId], references: [id])
   user                   User                   @relation(fields: [userId], references: [id])
-  organization           Organization?          @relation(fields: [organizationId], references: [id])
+  organization           Organization           @relation(fields: [organizationId], references: [id])
 }
