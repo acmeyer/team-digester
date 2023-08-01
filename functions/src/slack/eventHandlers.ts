@@ -25,7 +25,6 @@ export const appHomeOpenedHandler = async ({ event }: { event: AppHomeOpenedEven
   const view = event.view as HomeViewWithTeam;
   const teamId = view.team_id;
 
-  logger.info('appHomeOpenedHandler:teamId', teamId, { structuredData: true });
   const homeView = await createAppHomeView(user, teamId);
   await app.client.views.publish({
     token: process.env.SLACK_BOT_TOKEN,

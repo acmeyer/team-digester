@@ -126,31 +126,29 @@ export const findOrCreateUser = async (slackId: string, slackOrgId: string): Pro
     },
   });
 
-  if (!user) {
-    const slackUserData = await app.client.users.profile.get({
-      token: process.env.SLACK_BOT_TOKEN,
-      user: slackId,
-    });
-
-    // Create the user
-    const user = await prisma.user.create({
-      data: {
-        slackId: slackId,
-        email: slackUserData?.profile?.email,
-        pictureUrl: slackUserData?.profile?.image_512,
-        firstName: slackUserData?.profile?.first_name,
-        lastName: slackUserData?.profile?.last_name,
-        name: slackUserData?.profile?.real_name,
-        organizations: {
-          connect: {
-            slackId: slackOrgId,
-          },
-        },
-      },
-    });
-
+  if (user) {
     return user;
   }
 
-  return user;
+  const slackUserData = await app.client.users.profile.get({
+    token: process.env.SLACK_BOT_TOKEN,
+    user: slackId,
+  });
+
+  // Create the user
+  return prisma.user.create({
+    data: {
+      slackId: slackId,
+      email: slackUserData?.profile?.email,
+      pictureUrl: slackUserData?.profile?.image_512,
+      firstName: slackUserData?.profile?.first_name,
+      lastName: slackUserData?.profile?.last_name,
+      name: slackUserData?.profile?.real_name,
+      organizations: {
+        connect: {
+          slackId: slackOrgId,
+        },
+      },
+    },
+  });
 };
