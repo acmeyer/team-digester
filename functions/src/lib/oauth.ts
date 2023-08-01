@@ -13,8 +13,10 @@ export class OAuthProvider {
   redirectUri: string;
   authorizationBaseUri: string;
   tokenUri: string;
+  profileUri: string;
   scope: string;
-  additionalAuthorizationParams: Record<string, string>;
+  additionalAuthorizationParams?: Record<string, string>;
+  profileDataKeyMap?: Record<string, string>;
 
   constructor(
     label: string,
@@ -25,8 +27,10 @@ export class OAuthProvider {
     redirectUri: string,
     authorizationBaseUri: string,
     tokenUri: string,
+    profileUri: string,
     scope: string,
-    additionalAuthorizationParams: Record<string, string> = {}
+    additionalAuthorizationParams: Record<string, string> = {},
+    profileDataKeyMap: Record<string, string> = {}
   ) {
     this.label = label;
     this.value = value;
@@ -36,8 +40,10 @@ export class OAuthProvider {
     this.redirectUri = redirectUri;
     this.authorizationBaseUri = authorizationBaseUri;
     this.tokenUri = tokenUri;
+    this.profileUri = profileUri;
     this.scope = scope;
     this.additionalAuthorizationParams = additionalAuthorizationParams;
+    this.profileDataKeyMap = profileDataKeyMap;
   }
 
   getAuthorizationUrl(state: string): string {
@@ -62,7 +68,16 @@ export const OAUTH_INTEGRATIONS: OAuthIntegrations = {
     `${Config.API_BASE_URL}/oauth/github/callback`,
     'https://github.com/login/oauth/authorize',
     'https://github.com/login/oauth/access_token',
-    'user project repo read:org'
+    'https://api.github.com/user',
+    'user project repo read:org',
+    {},
+    {
+      uid: 'id',
+      username: 'login',
+      name: 'name',
+      picutreUrl: 'avatar_url',
+      email: 'email',
+    }
   ),
   jira: new OAuthProvider(
     'JIRA',
@@ -73,11 +88,18 @@ export const OAUTH_INTEGRATIONS: OAuthIntegrations = {
     `${Config.API_BASE_URL}/oauth/jira/callback`,
     'https://auth.atlassian.com/authorize',
     'https://auth.atlassian.com/oauth/token',
+    'https://api.atlassian.com/me',
     'offline_access read:account read:me read:jira-work read:jira-user manage:jira-webhook',
     {
       audience: 'api.atlassian.com',
       prompt: 'consent',
       response_type: 'code',
+    },
+    {
+      uid: 'account_id',
+      email: 'email',
+      name: 'name',
+      pictureUrl: 'picture',
     }
   ),
 };

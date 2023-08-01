@@ -65,7 +65,12 @@ model IntegrationProviderAccount {
   id             String   @id @default(dbgenerated("nanoid(14)"))
   provider       String
   uid            String?
-  data           Json
+  username       String?
+  name           String?
+  email          String?
+  pictureUrl     String?
+  rawAuthData    Json?
+  rawProfileData Json?
   accessToken    String?
   refreshToken   String?
   expiresIn      Int?

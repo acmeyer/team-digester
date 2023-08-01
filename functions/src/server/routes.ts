@@ -5,6 +5,7 @@ import { redis } from '../lib/redis';
 import { prisma } from '../lib/prisma';
 import { OauthStateStore } from '../types';
 import { OAUTH_INTEGRATIONS } from '../lib/oauth';
+import { forEach } from 'lodash';
 
 router.get('/health_check', (_req, res) => {
   res.send('Ok');
@@ -58,23 +59,41 @@ router.get('/oauth/:provider/callback', async (req, res) => {
       state: state,
     }),
   });
-  const data = await resp.json();
-  console.log('integration auth data', data);
+  const authData = await resp.json();
+  const profileResult = await fetch(`${integration.profileUri}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${authData.access_token}`,
+    },
+  });
+  const profileResultData = await profileResult.json();
+  const profileData: { [key: string]: string } = {};
+  forEach(integration.profileDataKeyMap, (value, key) => {
+    if (profileResultData[value]) {
+      profileData[key] = profileResultData[value].toString();
+    }
+  });
 
   await prisma.integrationProviderAccount.create({
     data: {
       provider: provider,
-      data: data,
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expiresIn: data.expires_in,
-      scope: data.scope,
+      uid: profileData.uid,
+      username: profileData.username,
+      name: profileData.name,
+      pictureUrl: profileData.pictureUrl,
+      email: profileData.email,
+      rawProfileData: JSON.stringify(profileResultData),
+      rawAuthData: authData,
+      accessToken: authData.access_token,
+      refreshToken: authData.refresh_token,
+      expiresIn: authData.expires_in,
+      scope: authData.scope,
       organizationId: organization.id,
       userId: user.id,
     },
   });
 
-  // TODO: set up webhooks and other integration things
+  // TODO: set up webhooks and other integration things in background job
 
   return res.redirect(`https://slack.com/app_redirect?app=${process.env.SLACK_APP_ID}`);
 });
