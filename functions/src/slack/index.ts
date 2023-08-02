@@ -7,7 +7,12 @@ import {
   appMentionHandler,
   appDirectMessageHandler,
 } from './eventHandlers';
-import { connectIntegrationHandler } from './actionHandlers';
+import {
+  connectIntegrationHandler,
+  createTeamHandler,
+  selectTeamMembersHandler,
+} from './actionHandlers';
+import { createTeamModalHandler } from './viewHandlers';
 import { slackErrorHandler } from './errors';
 import { saveInstallation, getInstallation, deleteInstallation } from './utils';
 
@@ -52,6 +57,10 @@ app.event('message', appDirectMessageHandler);
 app.event('app_uninstalled', appUninstalledHandler);
 // Action listeners
 app.action('connect_integration', connectIntegrationHandler);
+app.action('create_team', createTeamHandler);
+app.action('team_members_select', selectTeamMembersHandler);
+// View listeners
+app.view('create_team_modal', createTeamModalHandler);
 // Error handler
 app.error(slackErrorHandler);
 

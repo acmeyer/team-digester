@@ -1,12 +1,17 @@
 /* eslint-disable max-len */
 import { KnownBlock, HomeView } from '@slack/bolt';
 import * as logger from 'firebase-functions/logger';
-import { IntegrationProviderAccount, Organization, User } from '@prisma/client';
+import { IntegrationProviderAccount, User } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import * as crypto from 'crypto';
 import { flatMap } from 'lodash';
-import { OauthStateStore, OrganizationWithIntegrationConnections } from '../types';
+import {
+  OauthStateStore,
+  OrganizationWithIntegrationConnections,
+  UserWithTeams,
+  OrganizationWithTeams,
+} from '../types';
 import { OAUTH_INTEGRATIONS, OAuthIntegrations, OAuthProvider } from '../lib/oauth';
 
 export const createAppHomeView = async (
@@ -47,16 +52,17 @@ export const createAppHomeView = async (
 
   const isNewUser = user.teams.length < 1;
   const orgHasIntegrations = organization.integrationConnections.length > 0;
-  const orgHasTeams = organization.teams.length > 0;
 
   return {
     type: 'home',
     blocks: [
       ...(isNewUser ? newUserSection(user) : returningUserSection(user)),
       ...(!orgHasIntegrations
-        ? initialIntegrationsSection(user, organization, integrations)
-        : !orgHasTeams
-        ? initialTeamsSection(user, organization, integrations)
+        ? [
+            ...integrationsSection(user, organization, integrations),
+            ...teamsSection(user, organization),
+            ...settingsSection(user),
+          ]
         : [
             ...teamsSection(user, organization),
             ...integrationsSection(user, organization, integrations),
@@ -112,44 +118,22 @@ const returningUserSection = (user: User): KnownBlock[] => {
   ];
 };
 
-const initialIntegrationsSection = (
-  user: User,
-  organization: OrganizationWithIntegrationConnections,
-  integrations: OAuthIntegrations
-): KnownBlock[] => {
-  return [
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: 'To get started, connect Team Digester to the apps and services that your team uses:',
-      },
-    },
-    ...integrationsSection(user, organization, integrations),
-  ];
-};
+const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams): KnownBlock[] => {
+  const orgTeams = organization.teams;
+  const userTeams = user.teams;
 
-const initialTeamsSection = (
-  user: User,
-  organization: OrganizationWithIntegrationConnections,
-  integrations: OAuthIntegrations
-): KnownBlock[] => {
-  return [
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: 'Once you have your integrations connected, create a team:',
-      },
+  const createTeamButton = {
+    type: 'button',
+    text: {
+      type: 'plain_text',
+      text: 'Create Team',
+      emoji: true,
     },
-    ...integrationsSection(user, organization, integrations),
-    ...teamsSection(user, organization),
-  ];
-};
+    style: 'primary',
+    value: 'create_team',
+    action_id: 'create_team',
+  };
 
-const teamsSection = (user: User, organization: Organization): KnownBlock[] => {
-  // const orgTeams = organization.teams;
-  // const userTeams = user.teams;
   return [
     {
       type: 'header',
@@ -162,13 +146,32 @@ const teamsSection = (user: User, organization: Organization): KnownBlock[] => {
     {
       type: 'divider',
     },
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `TODO: List teams from ${organization.name} and ones that ${user.firstName} is a member of here`,
-      },
-    },
+    orgTeams.length === 0
+      ? {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: 'Get started by creating a new team.',
+          },
+          accessory: createTeamButton,
+        }
+      : userTeams.length === 0
+      ? {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: 'You are not a member of any teams yet. Click to join a team or create a new one.',
+          },
+          accessory: createTeamButton,
+        }
+      : {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: 'Below is the list of teams that you are a member of. You can also create a new team or join others by clicking the buttons below.',
+          },
+        },
+    // TODO: Add team list and buttons
   ];
 };
 
@@ -245,6 +248,8 @@ const integrationsSection = (
   organization: OrganizationWithIntegrationConnections,
   integrations: OAuthIntegrations
 ): KnownBlock[] => {
+  // const orgHasIntegrations = organization.integrationConnections.length > 0;
+
   const detailsSection = flatMap(integrations, (integration: OAuthProvider) => {
     return integrationBlocks(integration, organization, user);
   });

@@ -93,8 +93,6 @@ router.get('/oauth/:provider/callback', async (req, res) => {
     },
   });
 
-  // TODO: set up webhooks and other integration things in background job
-
   return res.redirect(`https://slack.com/app_redirect?app=${process.env.SLACK_APP_ID}`);
 });
 
