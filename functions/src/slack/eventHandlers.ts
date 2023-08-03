@@ -29,7 +29,7 @@ export const appHomeOpenedHandler = async ({ event }: { event: AppHomeOpenedEven
   const homeView = await createAppHomeView(user, teamId);
   await app.client.views.publish({
     token: Config.SLACK_BOT_TOKEN,
-    user_id: event.user,
+    user_id: user,
     view: homeView,
   });
 };

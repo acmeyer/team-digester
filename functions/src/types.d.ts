@@ -1,4 +1,10 @@
-import { Organization, IntegrationProviderAccount, User, Team } from '@prisma/client';
+import {
+  Organization,
+  IntegrationProviderAccount,
+  User,
+  Team,
+  TeamMembership,
+} from '@prisma/client';
 
 export interface OauthStateStore {
   organizationId: string;
@@ -18,6 +24,10 @@ export interface OrganizationWithIntegrationConnectionsAndTeams
   teams: Team[];
 }
 
+export interface TeamMembershipWithTeam extends TeamMembership {
+  team: Team;
+}
+
 export interface UserWithTeams extends User {
-  teams: Team[];
+  teamMemberships: TeamMembershipWithTeam[];
 }

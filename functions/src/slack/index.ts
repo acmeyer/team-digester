@@ -10,9 +10,10 @@ import {
 import {
   connectIntegrationHandler,
   createTeamHandler,
+  editTeamHandler,
   selectTeamMembersHandler,
 } from './actionHandlers';
-import { createTeamModalHandler } from './viewHandlers';
+import { createTeamModalHandler, editTeamModalHandler } from './viewHandlers';
 import { slackErrorHandler } from './errors';
 import { saveInstallation, getInstallation, deleteInstallation } from './utils';
 
@@ -58,9 +59,11 @@ app.event('app_uninstalled', appUninstalledHandler);
 // Action listeners
 app.action('connect_integration', connectIntegrationHandler);
 app.action('create_team', createTeamHandler);
+app.action('edit_team', editTeamHandler);
 app.action('team_members_select', selectTeamMembersHandler);
 // View listeners
 app.view('create_team_modal', createTeamModalHandler);
+app.view('edit_team_modal', editTeamModalHandler);
 // Error handler
 app.error(slackErrorHandler);
 

@@ -19,8 +19,9 @@ model User {
   updatedAt  DateTime @updatedAt
 
   organizations               Organization[]
-  teams                       Team[]
   integrationProviderAccounts IntegrationProviderAccount[]
+  teamMemberships             TeamMembership[]             @relation("TeamMemberships")
+  addedTeamMemberships        TeamMembership[]             @relation("AddedTeamMembers")
 }
 
 model Organization {
@@ -56,8 +57,23 @@ model Team {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  members      User[]
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  members      TeamMembership[]
+}
+
+model TeamMembership {
+  id        String   @id @default(dbgenerated("nanoid(14)"))
+  teamId    String
+  userId    String
+  addedById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team    Team  @relation(fields: [teamId], references: [id])
+  user    User  @relation("TeamMemberships", fields: [userId], references: [id])
+  addedBy User? @relation("AddedTeamMembers", fields: [addedById], references: [id])
+
+  @@unique([teamId, userId])
 }
 
 model IntegrationProviderAccount {

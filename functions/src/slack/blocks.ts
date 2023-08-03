@@ -27,7 +27,9 @@ export const createAppHomeView = async (
         slackId: slackUserId,
       },
       include: {
-        teams: true,
+        teamMemberships: {
+          include: { team: true },
+        },
       },
     }),
     prisma.organization.findUnique({
@@ -50,7 +52,7 @@ export const createAppHomeView = async (
     throw new Error('User or organization not found');
   }
 
-  const isNewUser = user.teams.length < 1;
+  const isNewUser = user.teamMemberships.length < 1;
   const orgHasIntegrations = organization.integrationConnections.length > 0;
 
   return {
@@ -120,8 +122,7 @@ const returningUserSection = (user: User): KnownBlock[] => {
 
 const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams): KnownBlock[] => {
   const orgTeams = organization.teams;
-  const userTeams = user.teams;
-
+  const userTeams = user.teamMemberships.map((membership) => membership.team);
   const createTeamButton = {
     type: 'button',
     text: {
@@ -134,7 +135,7 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
     action_id: 'create_team',
   };
 
-  return [
+  const blocks = [
     {
       type: 'header',
       text: {
@@ -146,33 +147,61 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
     {
       type: 'divider',
     },
-    orgTeams.length === 0
-      ? {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: 'Get started by creating a new team.',
-          },
-          accessory: createTeamButton,
-        }
-      : userTeams.length === 0
-      ? {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: 'You are not a member of any teams yet. Click to join a team or create a new one.',
-          },
-          accessory: createTeamButton,
-        }
-      : {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: 'Below is the list of teams that you are a member of. You can also create a new team or join others by clicking the buttons below.',
-          },
-        },
-    // TODO: Add team list and buttons
-  ];
+  ] as KnownBlock[];
+
+  if (orgTeams.length === 0) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: 'Get started by creating a new team.',
+      },
+      accessory: createTeamButton,
+    });
+  } else if (userTeams.length === 0) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: 'You are not a member of any teams yet. Click to join a team or create a new one.',
+      },
+      accessory: createTeamButton,
+    });
+  } else {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: 'Below is the list of teams that you are a member of. You can also join other teams by clicking the buttons below.',
+      },
+      accessory: createTeamButton,
+    });
+
+    blocks.push(
+      ...userTeams.map(
+        (team) =>
+          ({
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*${team.name}*`,
+            },
+            accessory: {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: 'Edit Team',
+                emoji: true,
+              },
+              value: team.id,
+              action_id: 'edit_team',
+            },
+          } as KnownBlock)
+      )
+    );
+  }
+
+  return blocks;
 };
 
 const integrationBlocks = (
