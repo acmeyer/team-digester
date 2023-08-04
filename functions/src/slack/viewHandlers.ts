@@ -41,7 +41,11 @@ const validateTeamForm = (values: TeamFormValues) => {
   return { isValid, errors };
 };
 
-const refreshHomeView = async (client: WebClient, slackUserId: string, slackOrgId: string) => {
+export const refreshHomeView = async (
+  client: WebClient,
+  slackUserId: string,
+  slackOrgId: string
+) => {
   const homeView = await createAppHomeView(slackUserId, slackOrgId);
   await client.views.publish({
     token: Config.SLACK_BOT_TOKEN,

@@ -9,10 +9,11 @@ import {
   ButtonAction,
   View,
 } from '@slack/bolt';
-import { WebClient } from '@slack/web-api';
+import { KnownBlock, ModalView, WebClient } from '@slack/web-api';
 import * as logger from 'firebase-functions/logger';
 import { Config } from '../config';
 import { prisma } from '../lib/prisma';
+import { refreshHomeView } from './viewHandlers';
 
 export const connectIntegrationHandler = async ({
   ack,
@@ -104,7 +105,100 @@ const teamModal = ({
   }),
 });
 
-export const createTeamHandler = async ({
+const createTeamsModal = async (slackUserId: string, slackOrgId: string): Promise<ModalView> => {
+  // Get list of teams
+  const [organization, user] = await Promise.all([
+    prisma.organization.findUnique({
+      where: {
+        slackId: slackOrgId,
+      },
+      include: {
+        teams: {
+          include: {
+            members: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.user.findUnique({
+      where: {
+        slackId: slackUserId,
+      },
+      include: {
+        teamMemberships: {
+          include: {
+            team: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  if (!organization || !user) {
+    throw new Error('Organization or user not found');
+  }
+
+  const teamBlocks = organization.teams.map((team) => {
+    const isMember = user.teamMemberships.some((membership) => membership.team.id === team.id);
+    return {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*${team.name}*\nMembers: ${team.members
+          .map((member) => member.user.name)
+          .join(', ')}`,
+      },
+      accessory: {
+        type: 'button',
+        text: {
+          type: 'plain_text',
+          text: isMember ? 'Leave' : 'Join',
+        },
+        style: isMember ? 'danger' : 'primary',
+        action_id: isMember ? 'leave_team' : 'join_team',
+        value: team.id,
+      },
+    } as KnownBlock;
+  });
+
+  return {
+    type: 'modal',
+    callback_id: 'join_team_modal',
+    title: {
+      type: 'plain_text',
+      text: 'Join a team',
+    },
+    close: {
+      type: 'plain_text',
+      text: 'Close',
+    },
+    blocks: teamBlocks,
+  };
+};
+
+export const refreshTeamsModal = async (
+  client: WebClient,
+  slackUserId: string,
+  slackOrgId: string,
+  viewId?: string
+) => {
+  if (!viewId) {
+    return;
+  }
+
+  const teamsModal = await createTeamsModal(slackUserId, slackOrgId);
+  await client.views.update({
+    token: Config.SLACK_BOT_TOKEN,
+    view_id: viewId,
+    view: teamsModal,
+  });
+};
+
+export const showCreateTeamHandler = async ({
   ack,
   body,
   context,
@@ -118,7 +212,7 @@ export const createTeamHandler = async ({
   ack();
 
   const userId = body.user.id;
-  logger.info('createTeam called', context, { structuredData: true });
+  logger.info('showCreateTeam called', context, { structuredData: true });
 
   client.views.open({
     token: Config.SLACK_BOT_TOKEN,
@@ -131,7 +225,7 @@ export const createTeamHandler = async ({
   });
 };
 
-export const editTeamHandler = async ({
+export const showEditTeamHandler = async ({
   ack,
   body,
   context,
@@ -143,11 +237,11 @@ export const editTeamHandler = async ({
   client: WebClient;
 }) => {
   ack();
-  logger.info('editTeam called', context, { structuredData: true });
+  logger.info('showEditTeam called', context, { structuredData: true });
 
   const { trigger_id: triggerId, actions } = body as BlockAction<BlockElementAction>;
   const teamId = (actions as ButtonAction[]).find(
-    (action) => action.action_id === 'edit_team'
+    (action) => action.action_id === 'show_edit_team'
   )?.value;
   const team = await prisma.team.findUnique({
     where: {
@@ -175,4 +269,120 @@ export const editTeamHandler = async ({
       teamId: team.id,
     }),
   });
+};
+
+export const showJoinTeamHandler = async ({
+  ack,
+  body,
+  context,
+  client,
+}: {
+  ack: AckFn<void> | AckFn<string | SayArguments> | AckFn<DialogValidation>;
+  body: SlackAction;
+  context: Context;
+  client: WebClient;
+}) => {
+  ack();
+  logger.info('showJoinTeam called', context, { structuredData: true });
+
+  const { trigger_id: triggerId } = body as BlockAction<BlockElementAction>;
+  const { teamId } = context;
+  if (!teamId) {
+    throw new Error('Not found');
+  }
+
+  const teamsModal = await createTeamsModal(body.user.id, teamId);
+  client.views.open({
+    token: Config.SLACK_BOT_TOKEN,
+    trigger_id: triggerId,
+    view: teamsModal,
+  });
+};
+
+export const joinTeamHandler = async ({
+  ack,
+  body,
+  context,
+  client,
+}: {
+  ack: AckFn<void> | AckFn<string | SayArguments> | AckFn<DialogValidation>;
+  body: SlackAction;
+  context: Context;
+  client: WebClient;
+}) => {
+  ack();
+  logger.info('joinTeam called', context, { structuredData: true });
+
+  console.log('body', body);
+
+  const { actions, view } = body as BlockAction<ButtonAction>;
+  const teamId = actions[0].value;
+  const { userId: slackUserId, teamId: slackOrgId } = context;
+
+  const user = await prisma.user.findUnique({
+    where: {
+      slackId: slackUserId,
+    },
+  });
+
+  if (!teamId || !user || !slackUserId || !slackOrgId) {
+    throw new Error('Not found');
+  }
+
+  // Add to team
+  await prisma.teamMembership.create({
+    data: {
+      teamId,
+      userId: user.id,
+    },
+  });
+
+  await Promise.all([
+    refreshTeamsModal(client, slackUserId, slackOrgId, view?.id),
+    refreshHomeView(client, slackUserId, slackOrgId),
+  ]);
+};
+
+export const leaveTeamHandler = async ({
+  ack,
+  body,
+  context,
+  client,
+}: {
+  ack: AckFn<void> | AckFn<string | SayArguments> | AckFn<DialogValidation>;
+  body: SlackAction;
+  context: Context;
+  client: WebClient;
+}) => {
+  ack();
+  logger.info('leaveTeam called', context, { structuredData: true });
+
+  const { actions, view } = body as BlockAction<ButtonAction>;
+  const teamId = actions[0].value;
+  const { userId: slackUserId, teamId: slackOrgId } = context;
+
+  const user = await prisma.user.findUnique({
+    where: {
+      slackId: slackUserId,
+    },
+  });
+
+  if (!teamId || !user || !slackUserId || !slackOrgId) {
+    throw new Error('Not found');
+  }
+
+  // Remove from team
+  await prisma.teamMembership.delete({
+    where: {
+      teamId_userId: {
+        userId: user.id,
+        teamId,
+      },
+    },
+  });
+
+  await Promise.all([
+    refreshTeamsModal(client, slackUserId, slackOrgId, view?.id),
+    refreshHomeView(client, slackUserId, slackOrgId),
+  ]);
 };

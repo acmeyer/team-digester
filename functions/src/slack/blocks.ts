@@ -1,5 +1,5 @@
 /* eslint-disable max-len */
-import { KnownBlock, HomeView } from '@slack/bolt';
+import { KnownBlock, HomeView, Button } from '@slack/bolt';
 import * as logger from 'firebase-functions/logger';
 import { IntegrationProviderAccount, User } from '@prisma/client';
 import { prisma } from '../lib/prisma';
@@ -154,9 +154,9 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
       emoji: true,
     },
     style: 'primary',
-    value: 'create_team',
-    action_id: 'create_team',
-  };
+    value: 'show_create_team',
+    action_id: 'show_create_team',
+  } as Button;
 
   const joinTeamButton = {
     type: 'button',
@@ -165,10 +165,9 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
       text: 'Join Team',
       emoji: true,
     },
-    style: 'default',
-    value: 'join_team',
-    action_id: 'join_team',
-  };
+    value: 'show_join_team',
+    action_id: 'show_join_team',
+  } as Button;
 
   const blocks = [
     {
@@ -228,7 +227,7 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
                 emoji: true,
               },
               value: team.id,
-              action_id: 'edit_team',
+              action_id: 'show_edit_team',
             },
           } as KnownBlock)
       )
@@ -236,9 +235,9 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
   }
 
   const footerBlocks = [createTeamButton];
-  if (orgTeams.length > userTeams.length) {
-    footerBlocks.push(joinTeamButton);
-  }
+  // if (orgTeams.length > userTeams.length) {
+  footerBlocks.push(joinTeamButton);
+  // }
 
   blocks.push({
     type: 'actions',

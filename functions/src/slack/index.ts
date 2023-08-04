@@ -9,9 +9,12 @@ import {
 } from './eventHandlers';
 import {
   connectIntegrationHandler,
-  createTeamHandler,
-  editTeamHandler,
+  showCreateTeamHandler,
+  showEditTeamHandler,
   selectTeamMembersHandler,
+  showJoinTeamHandler,
+  joinTeamHandler,
+  leaveTeamHandler,
 } from './actionHandlers';
 import { createTeamModalHandler, editTeamModalHandler } from './viewHandlers';
 import { slackErrorHandler } from './errors';
@@ -58,8 +61,11 @@ app.event('message', appDirectMessageHandler);
 app.event('app_uninstalled', appUninstalledHandler);
 // Action listeners
 app.action('connect_integration', connectIntegrationHandler);
-app.action('create_team', createTeamHandler);
-app.action('edit_team', editTeamHandler);
+app.action('show_create_team', showCreateTeamHandler);
+app.action('show_edit_team', showEditTeamHandler);
+app.action('show_join_team', showJoinTeamHandler);
+app.action('join_team', joinTeamHandler);
+app.action('leave_team', leaveTeamHandler);
 app.action('team_members_select', selectTeamMembersHandler);
 // View listeners
 app.view('create_team_modal', createTeamModalHandler);
