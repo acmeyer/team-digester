@@ -15,6 +15,7 @@ import {
   showJoinTeamHandler,
   joinTeamHandler,
   leaveTeamHandler,
+  notificationFrequencyHandler,
 } from './actionHandlers';
 import { createTeamModalHandler, editTeamModalHandler } from './viewHandlers';
 import { slackErrorHandler } from './errors';
@@ -67,6 +68,7 @@ app.action('show_join_team', showJoinTeamHandler);
 app.action('join_team', joinTeamHandler);
 app.action('leave_team', leaveTeamHandler);
 app.action('team_members_select', selectTeamMembersHandler);
+app.action('notification_frequency', notificationFrequencyHandler);
 // View listeners
 app.view('create_team_modal', createTeamModalHandler);
 app.view('edit_team_modal', editTeamModalHandler);

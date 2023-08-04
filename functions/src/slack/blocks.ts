@@ -1,7 +1,7 @@
 /* eslint-disable max-len */
-import { KnownBlock, HomeView, Button } from '@slack/bolt';
+import { KnownBlock, HomeView, Button, Option } from '@slack/bolt';
 import * as logger from 'firebase-functions/logger';
-import { IntegrationProviderAccount, User } from '@prisma/client';
+import { IntegrationProviderAccount, User, NotificationType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import * as crypto from 'crypto';
@@ -11,6 +11,7 @@ import {
   OrganizationWithIntegrationConnections,
   UserWithTeams,
   OrganizationWithTeams,
+  UserWithNotificationSettings,
 } from '../types';
 import { OAUTH_INTEGRATIONS, OAuthIntegrations, OAuthProvider } from '../lib/oauth';
 
@@ -40,6 +41,7 @@ export const createAppHomeView = async (
             },
           },
         },
+        notificationSettings: true,
       },
     }),
     prisma.organization.findUnique({
@@ -150,7 +152,7 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
     type: 'button',
     text: {
       type: 'plain_text',
-      text: 'Create Team',
+      text: 'Create New Team',
       emoji: true,
     },
     style: 'primary',
@@ -162,7 +164,7 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
     type: 'button',
     text: {
       type: 'plain_text',
-      text: 'Join Team',
+      text: 'Join a Team',
       emoji: true,
     },
     value: 'show_join_team',
@@ -174,7 +176,7 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
       type: 'header',
       text: {
         type: 'plain_text',
-        text: 'Teams',
+        text: 'Your Teams',
         emoji: true,
       },
     },
@@ -200,14 +202,6 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
       },
     });
   } else {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: 'Below is the list of your teams.',
-      },
-    });
-
     blocks.push(
       ...userTeams.map(
         (team) =>
@@ -223,7 +217,7 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
               type: 'button',
               text: {
                 type: 'plain_text',
-                text: 'Edit Team',
+                text: 'Manage Team',
                 emoji: true,
               },
               value: team.id,
@@ -235,9 +229,9 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
   }
 
   const footerBlocks = [createTeamButton];
-  // if (orgTeams.length > userTeams.length) {
-  footerBlocks.push(joinTeamButton);
-  // }
+  if (orgTeams.length > userTeams.length) {
+    footerBlocks.push(joinTeamButton);
+  }
 
   blocks.push({
     type: 'actions',
@@ -342,13 +336,81 @@ const integrationsSection = (
   ];
 };
 
-const settingsSection = (user: User): KnownBlock[] => {
+const getSettingOption = (type: string): Option => {
+  switch (type) {
+    case NotificationType.daily:
+      return {
+        text: {
+          type: 'plain_text',
+          text: 'Daily',
+          emoji: true,
+        },
+        description: {
+          type: 'plain_text',
+          text: "Receive a summary of your team's activity every week day.",
+        },
+        value: NotificationType.daily,
+      };
+    case NotificationType.weekly:
+      return {
+        text: {
+          type: 'plain_text',
+          text: 'Weekly',
+          emoji: true,
+        },
+        description: {
+          type: 'plain_text',
+          text: "Receive a summary of your team's activity every week.",
+        },
+        value: NotificationType.weekly,
+      };
+    case NotificationType.monthly:
+      return {
+        text: {
+          type: 'plain_text',
+          text: 'Monthly',
+          emoji: true,
+        },
+        description: {
+          type: 'plain_text',
+          text: "Receive a summary of your team's activity every month on the 1st of the month.",
+        },
+        value: NotificationType.monthly,
+      };
+    default:
+      // this should never happen
+      return {
+        text: {
+          type: 'plain_text',
+          text: 'Never',
+          emoji: true,
+        },
+        value: 'none',
+      };
+  }
+};
+
+const settingsSection = (user: UserWithNotificationSettings): KnownBlock[] => {
+  const userNotficationSettings = user.notificationSettings;
+  let initialNotificationSettings;
+  if (userNotficationSettings && userNotficationSettings.length > 0) {
+    initialNotificationSettings = userNotficationSettings.map((setting) => {
+      return getSettingOption(setting.type);
+    });
+  }
+
+  const notificationTypes = [];
+  // eslint-disable-next-line guard-for-in
+  for (const type in NotificationType) {
+    notificationTypes.push(type);
+  }
+
   return [
     {
       type: 'header',
       text: {
         type: 'plain_text',
-        text: 'Settings',
+        text: 'Notification Settings',
         emoji: true,
       },
     },
@@ -356,11 +418,64 @@ const settingsSection = (user: User): KnownBlock[] => {
       type: 'divider',
     },
     {
+      block_id: 'notification_frequency',
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `TODO: ${user.firstName}'s settings here`,
+        text: 'What types of summaries would you like to be sent to you?',
+      },
+      accessory: {
+        type: 'checkboxes',
+        initial_options: initialNotificationSettings,
+        options: notificationTypes.map((type: string) => {
+          return getSettingOption(type);
+        }),
+        action_id: 'notification_frequency',
       },
     },
+    // TODO: show notification timing settings based on enabled notification types
+    // {
+    //   block_id: 'notification_timing',
+    //   type: 'section',
+    //   text: {
+    //     type: 'mrkdwn',
+    //     text: 'When would you like your summaries sent to you?',
+    //   },
+    //   accessory: {
+    //     type: 'static_select',
+    //     placeholder: {
+    //       type: 'plain_text',
+    //       text: 'Select an item',
+    //       emoji: true,
+    //     },
+    //     options: [
+    //       {
+    //         text: {
+    //           type: 'plain_text',
+    //           text: 'Morning (8am in your timezone)',
+    //           emoji: true,
+    //         },
+    //         value: 'morning',
+    //       },
+    //       {
+    //         text: {
+    //           type: 'plain_text',
+    //           text: 'Mid-day (12pm in your timezone)',
+    //           emoji: true,
+    //         },
+    //         value: 'midday',
+    //       },
+    //       {
+    //         text: {
+    //           type: 'plain_text',
+    //           text: 'Evening (6pm in your timezone)',
+    //           emoji: true,
+    //         },
+    //         value: 'evening',
+    //       },
+    //     ],
+    //     action_id: 'notification_timing',
+    //   },
+    // },
   ];
 };

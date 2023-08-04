@@ -4,6 +4,7 @@ import {
   User,
   Team,
   TeamMembership,
+  NotificationSetting,
 } from '@prisma/client';
 
 export interface OauthStateStore {
@@ -38,4 +39,8 @@ export interface UserWithTeams extends User {
 
 export interface TeamMembershipWithUser extends TeamMembership {
   user: User;
+}
+
+export interface UserWithNotificationSettings extends User {
+  notificationSettings: NotificationSetting[];
 }

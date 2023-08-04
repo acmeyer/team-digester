@@ -8,12 +8,25 @@ import {
   BlockAction,
   ButtonAction,
   View,
+  Option,
 } from '@slack/bolt';
 import { KnownBlock, ModalView, WebClient } from '@slack/web-api';
 import * as logger from 'firebase-functions/logger';
 import { Config } from '../config';
+import { NotificationType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { refreshHomeView } from './viewHandlers';
+
+type NotificationSettingsState = {
+  values: {
+    notification_frequency: {
+      notification_frequency: { type: string; selected_options: Option[] };
+    };
+    notification_timing: {
+      notification_timing: { type: string; selected_option: string };
+    };
+  };
+};
 
 export const connectIntegrationHandler = async ({
   ack,
@@ -313,8 +326,6 @@ export const joinTeamHandler = async ({
   ack();
   logger.info('joinTeam called', context, { structuredData: true });
 
-  console.log('body', body);
-
   const { actions, view } = body as BlockAction<ButtonAction>;
   const teamId = actions[0].value;
   const { userId: slackUserId, teamId: slackOrgId } = context;
@@ -360,7 +371,6 @@ export const leaveTeamHandler = async ({
   const { actions, view } = body as BlockAction<ButtonAction>;
   const teamId = actions[0].value;
   const { userId: slackUserId, teamId: slackOrgId } = context;
-
   const user = await prisma.user.findUnique({
     where: {
       slackId: slackUserId,
@@ -385,4 +395,63 @@ export const leaveTeamHandler = async ({
     refreshTeamsModal(client, slackUserId, slackOrgId, view?.id),
     refreshHomeView(client, slackUserId, slackOrgId),
   ]);
+};
+
+export const notificationFrequencyHandler = async ({
+  ack,
+  body,
+  context,
+}: {
+  ack: AckFn<void> | AckFn<string | SayArguments> | AckFn<DialogValidation>;
+  body: SlackAction;
+  context: Context;
+  client: WebClient;
+}) => {
+  ack();
+  logger.info('notificationFrequencyHandler called', context, { structuredData: true });
+
+  const { view } = body as BlockAction<ButtonAction>;
+  if (!view) {
+    return;
+  }
+  const { values } = view.state as unknown as NotificationSettingsState;
+  const selectedNotificationTypes =
+    values.notification_frequency.notification_frequency.selected_options.map(
+      (option) => option.value
+    );
+  const { userId: slackUserId } = context;
+  const user = await prisma.user.findUnique({
+    where: {
+      slackId: slackUserId,
+    },
+  });
+
+  if (!user) {
+    throw new Error('Not found');
+  }
+
+  console.log('selectedeNotificationTypes', selectedNotificationTypes);
+
+  // TODO: go through all notification types
+  // update ones selected as enabled and disable the rest
+  selectedNotificationTypes.map(async (type) => {
+    await prisma.notificationSetting.upsert({
+      where: {
+        userId_type: {
+          userId: user.id,
+          type: type as NotificationType,
+        },
+      },
+      update: {
+        timing: 'daily',
+      },
+      create: {
+        userId: user.id,
+        type: type as NotificationType,
+        timing: 'daily',
+      },
+    });
+  });
+
+  // TODO: update the home view
 };
