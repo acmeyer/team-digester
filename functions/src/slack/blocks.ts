@@ -28,7 +28,17 @@ export const createAppHomeView = async (
       },
       include: {
         teamMemberships: {
-          include: { team: true },
+          include: {
+            team: {
+              include: {
+                members: {
+                  include: {
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
         },
       },
     }),
@@ -37,7 +47,15 @@ export const createAppHomeView = async (
         slackId: slackOrgId,
       },
       include: {
-        teams: true,
+        teams: {
+          include: {
+            members: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        },
         integrationConnections: true,
       },
     }),
@@ -54,6 +72,10 @@ export const createAppHomeView = async (
 
   const isNewUser = user.teamMemberships.length < 1;
   const orgHasIntegrations = organization.integrationConnections.length > 0;
+
+  organization.teams.map((team) => {
+    team.members;
+  });
 
   return {
     type: 'home',
@@ -123,6 +145,7 @@ const returningUserSection = (user: User): KnownBlock[] => {
 const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams): KnownBlock[] => {
   const orgTeams = organization.teams;
   const userTeams = user.teamMemberships.map((membership) => membership.team);
+
   const createTeamButton = {
     type: 'button',
     text: {
@@ -133,6 +156,18 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
     style: 'primary',
     value: 'create_team',
     action_id: 'create_team',
+  };
+
+  const joinTeamButton = {
+    type: 'button',
+    text: {
+      type: 'plain_text',
+      text: 'Join Team',
+      emoji: true,
+    },
+    style: 'default',
+    value: 'join_team',
+    action_id: 'join_team',
   };
 
   const blocks = [
@@ -156,7 +191,6 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
         type: 'mrkdwn',
         text: 'Get started by creating a new team.',
       },
-      accessory: createTeamButton,
     });
   } else if (userTeams.length === 0) {
     blocks.push({
@@ -165,16 +199,14 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
         type: 'mrkdwn',
         text: 'You are not a member of any teams yet. Click to join a team or create a new one.',
       },
-      accessory: createTeamButton,
     });
   } else {
     blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: 'Below is the list of teams that you are a member of. You can also join other teams by clicking the buttons below.',
+        text: 'Below is the list of your teams.',
       },
-      accessory: createTeamButton,
     });
 
     blocks.push(
@@ -184,7 +216,9 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `*${team.name}*`,
+              text: `*${team.name}*\nMembers: ${team.members
+                .map((membership) => membership.user.name)
+                .join(', ')}`,
             },
             accessory: {
               type: 'button',
@@ -200,6 +234,16 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
       )
     );
   }
+
+  const footerBlocks = [createTeamButton];
+  if (orgTeams.length > userTeams.length) {
+    footerBlocks.push(joinTeamButton);
+  }
+
+  blocks.push({
+    type: 'actions',
+    elements: footerBlocks,
+  });
 
   return blocks;
 };

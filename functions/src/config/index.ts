@@ -6,6 +6,7 @@ export const Config = {
   SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET as string,
   SLACK_STATE_SECRET: process.env.SLACK_STATE_SECRET as string,
   SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN as string,
+  SLACK_APP_ID: process.env.SLACK_APP_ID as string,
   GITHUB_WEBHOOK_SECRET: process.env.GITHUB_WEBHOOK_SECRET as string,
   GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID as string,
   GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET as string,

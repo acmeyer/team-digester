@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import { AckFn, ViewResponseAction, ViewOutput, SlackViewAction, Context } from '@slack/bolt';
 import * as logger from 'firebase-functions/logger';
 import { createAppHomeView } from './blocks';
@@ -5,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { findOrCreateUser } from './utils';
 import { Config } from '../config';
 import { WebClient } from '@slack/web-api';
+import { User } from '@prisma/client';
 
 type TeamFormState = {
   values: {
@@ -46,6 +48,24 @@ const refreshHomeView = async (client: WebClient, slackUserId: string, slackOrgI
     user_id: slackUserId,
     view: homeView,
   });
+};
+
+const sendTeamCreatedNotifications = async (
+  client: WebClient,
+  teamMembers: User[],
+  slackOrgId: string,
+  invitingUser: User,
+  teamName: string
+) => {
+  return Promise.all(
+    teamMembers.map((member) =>
+      client.chat.postMessage({
+        token: Config.SLACK_BOT_TOKEN,
+        channel: member.slackId,
+        text: `${invitingUser.name} added to the *${teamName}* team! Go to <slack://app?team=${slackOrgId}&id=${Config.SLACK_APP_ID}&tab=home|the home tab> to configure your settings.`,
+      })
+    )
+  );
 };
 
 export const createTeamModalHandler = async ({
@@ -111,6 +131,16 @@ export const createTeamModalHandler = async ({
       },
     });
 
+    // Send notifications to team members, except the user who created the team
+    const filteredTeamMembers = teamMembers.filter((member) => member.slackId !== slackUserId);
+    await sendTeamCreatedNotifications(
+      client,
+      filteredTeamMembers,
+      slackOrgId,
+      user,
+      values.team_name.team_name.value
+    );
+    // Refresh the home tab
     await refreshHomeView(client, slackUserId, slackOrgId);
   } catch (error) {
     logger.error('Error creating team', error, { structuredData: true });
@@ -159,6 +189,16 @@ export const editTeamModalHandler = async ({
     );
     const user = await findOrCreateUser(slackUserId, slackOrgId);
 
+    // Store current team members for later use
+    const currentTeamMembers = await prisma.teamMembership.findMany({
+      where: {
+        teamId: teamId,
+      },
+      select: {
+        userId: true,
+      },
+    });
+
     // Remove any members that were removed
     await prisma.teamMembership.deleteMany({
       where: {
@@ -194,6 +234,20 @@ export const editTeamModalHandler = async ({
         },
       },
     });
+
+    // Send notifications to only new members, except the user who updated the team
+    const filteredTeamMembers = teamMembers.filter(
+      (member) =>
+        member.slackId !== slackUserId &&
+        !currentTeamMembers.find((currentMember) => currentMember.userId === member.id)
+    );
+    await sendTeamCreatedNotifications(
+      client,
+      filteredTeamMembers,
+      slackOrgId,
+      user,
+      values.team_name.team_name.value
+    );
 
     await refreshHomeView(client, slackUserId, slackOrgId);
   } catch (error) {

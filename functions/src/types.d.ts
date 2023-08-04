@@ -16,7 +16,11 @@ export interface OrganizationWithIntegrationConnections extends Organization {
 }
 
 export interface OrganizationWithTeams extends Organization {
-  teams: Team[];
+  teams: TeamWithMembers[];
+}
+
+export interface TeamWithMembers extends Team {
+  members: TeamMembershipWithUser[];
 }
 
 export interface OrganizationWithIntegrationConnectionsAndTeams
@@ -25,9 +29,13 @@ export interface OrganizationWithIntegrationConnectionsAndTeams
 }
 
 export interface TeamMembershipWithTeam extends TeamMembership {
-  team: Team;
+  team: TeamWithMembers;
 }
 
 export interface UserWithTeams extends User {
   teamMemberships: TeamMembershipWithTeam[];
+}
+
+export interface TeamMembershipWithUser extends TeamMembership {
+  user: User;
 }
