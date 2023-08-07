@@ -11,7 +11,7 @@ import {
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import * as crypto from 'crypto';
-import { flatMap, startCase } from 'lodash';
+import { flatMap, startCase, sortBy, indexOf } from 'lodash';
 import {
   OauthStateStore,
   OrganizationWithIntegrationConnections,
@@ -397,18 +397,33 @@ const getNotificationSettingOption = (type: string): Option => {
   }
 };
 
-// const getNotificationTimingSelectedOptions = (
-//   settings: NotificationSetting
-// ): Option[] | undefined => {
-//   return [];
-// };
+const getNotificationTimingSelectedOptions = (
+  setting: NotificationSetting,
+  timingOption: string
+): Option | undefined => {
+  const currentValue = setting.timing;
+  if (currentValue && currentValue !== '') {
+    const options =
+      NOTIFICATION_TIMING_OPTIONS[timingOption as 'timeOfDay' | 'dayOfWeek' | 'dayOfMonth'];
+
+    if (timingOption === 'timeOfDay') {
+      const time = currentValue.split(':').pop();
+      return options.find((option) => option.value === time);
+    } else if (timingOption === 'dayOfWeek' || timingOption === 'dayOfMonth') {
+      const day = currentValue.split(':').shift();
+      return options.find((option) => option.value === day);
+    }
+  }
+
+  return undefined;
+};
 
 const timingNotificationSettingsSection = (
   userNotficationSettings: NotificationSetting[]
 ): KnownBlock[] => {
   const blocks = [
     {
-      block_id: 'notification_timing',
+      block_id: 'notification_timing_options',
       type: 'section',
       text: {
         type: 'mrkdwn',
@@ -417,8 +432,9 @@ const timingNotificationSettingsSection = (
     } as KnownBlock,
   ];
 
-  // for each enabled notification setting, show options for timing
-  userNotficationSettings.forEach((setting) => {
+  // for each enabled notification setting, show options for timing, sort by type: daily, weekly, monthly
+  const order = [NotificationType.daily, NotificationType.weekly, NotificationType.monthly];
+  sortBy(userNotficationSettings, (o) => indexOf(order, o.type)).map((setting) => {
     blocks.push({
       type: 'section',
       block_id: `notification_timing_${setting.type}_section`,
@@ -434,96 +450,101 @@ const timingNotificationSettingsSection = (
       case NotificationType.daily:
         blocks.push({
           type: 'section',
+          block_id: `${setting.type}_timeOfDay`,
           text: {
             type: 'mrkdwn',
             text: "The time of day you would like to receive a summary of your team's activity every week day.",
           },
           accessory: {
             type: 'static_select',
-            action_id: `notification_timing_${setting.type}_time`,
+            action_id: 'notification_timing',
             placeholder: {
               type: 'plain_text',
               text: 'Time of day',
               emoji: true,
             },
             options: NOTIFICATION_TIMING_OPTIONS.timeOfDay,
-            // initial_options: getNotificationTimingSelectedOptions(setting),
+            initial_option: getNotificationTimingSelectedOptions(setting, 'timeOfDay'),
           },
         } as KnownBlock);
         break;
       case NotificationType.weekly:
         blocks.push({
           type: 'section',
+          block_id: `${setting.type}_dayOfWeek`,
           text: {
             type: 'mrkdwn',
             text: "The day of the week you would like to receive a summary of your team's activity every week.",
           },
           accessory: {
             type: 'static_select',
-            action_id: `notification_timing_${setting.type}_day`,
+            action_id: 'notification_timing',
             placeholder: {
               type: 'plain_text',
               text: 'Day of week',
               emoji: true,
             },
             options: NOTIFICATION_TIMING_OPTIONS.dayOfWeek,
-            // initial_options: getNotificationTimingSelectedOptions(setting),
+            initial_option: getNotificationTimingSelectedOptions(setting, 'dayOfWeek'),
           },
         } as KnownBlock);
         blocks.push({
           type: 'section',
+          block_id: `${setting.type}_timeOfDay`,
           text: {
             type: 'mrkdwn',
             text: "The time of day you would like to receive a summary of your team's activity every week.",
           },
           accessory: {
             type: 'static_select',
-            action_id: `notification_timing_${setting.type}_time`,
+            action_id: 'notification_timing',
             placeholder: {
               type: 'plain_text',
               text: 'Time of day',
               emoji: true,
             },
             options: NOTIFICATION_TIMING_OPTIONS.timeOfDay,
-            // initial_options: getNotificationTimingSelectedOptions(setting),
+            initial_option: getNotificationTimingSelectedOptions(setting, 'timeOfDay'),
           },
         } as KnownBlock);
         break;
       case NotificationType.monthly:
         blocks.push({
           type: 'section',
+          block_id: `${setting.type}_dayOfMonth`,
           text: {
             type: 'mrkdwn',
             text: "The day of the month you would like to receive a summary of your team's activity every month.",
           },
           accessory: {
             type: 'static_select',
-            action_id: `notification_timing_${setting.type}_day`,
+            action_id: 'notification_timing',
             placeholder: {
               type: 'plain_text',
               text: 'Day of month',
               emoji: true,
             },
             options: NOTIFICATION_TIMING_OPTIONS.dayOfMonth,
-            // initial_options: getNotificationTimingSelectedOptions(setting),
+            initial_option: getNotificationTimingSelectedOptions(setting, 'dayOfMonth'),
           },
         } as KnownBlock);
         blocks.push({
           type: 'section',
+          block_id: `${setting.type}_timeOfDay`,
           text: {
             type: 'mrkdwn',
             text: "The time of day you would like to receive a summary of your team's activity every month.",
           },
           accessory: {
             type: 'static_select',
-            action_id: `notification_timing_${setting.type}_time`,
+            action_id: 'notification_timing',
             placeholder: {
               type: 'plain_text',
               text: 'Time of day',
               emoji: true,
             },
             options: NOTIFICATION_TIMING_OPTIONS.timeOfDay,
-            // initial_options: getNotificationTimingSelectedOptions(setting),
+            initial_option: getNotificationTimingSelectedOptions(setting, 'timeOfDay'),
           },
         } as KnownBlock);
         break;
@@ -531,8 +552,6 @@ const timingNotificationSettingsSection = (
         break;
     }
   });
-
-  console.log('blocks', blocks);
 
   return blocks;
 };

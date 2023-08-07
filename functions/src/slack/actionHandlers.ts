@@ -22,10 +22,38 @@ type NotificationSettingsState = {
     notification_frequency: {
       notification_frequency: { type: string; selected_options: Option[] };
     };
-    notification_timing: {
-      notification_timing: { type: string; selected_option: string };
+    daily_timeOfDay?: {
+      notification_timing: { type: string; selected_option: Option };
+    };
+    weekly_timeOfDay?: {
+      notification_timing: { type: string; selected_option: Option };
+    };
+    weekly_dayOfWeek?: {
+      notification_timing: { type: string; selected_option: Option };
+    };
+    monthly_timeOfDay?: {
+      notification_timing: { type: string; selected_option: Option };
+    };
+    monthly_dayOfMonth?: {
+      notification_timing: { type: string; selected_option: Option };
     };
   };
+};
+
+type Timing = {
+  notification_timing: { type: string; selected_option: Option };
+};
+
+type GroupedOptions = {
+  daily: Array<{ timeOfDay?: string; dayOfWeek?: string }>;
+  weekly: Array<{ timeOfDay?: string; dayOfWeek?: string }>;
+  monthly: Array<{ timeOfDay?: string; dayOfMonth?: string }>;
+};
+
+const defaultTimingForNotificationType = {
+  [NotificationType.daily]: '8am',
+  [NotificationType.weekly]: 'friday:8am',
+  [NotificationType.monthly]: 'first:8am',
 };
 
 export const connectIntegrationHandler = async ({
@@ -434,12 +462,6 @@ export const notificationFrequencyHandler = async ({
     throw new Error('Not found');
   }
 
-  const defaultTimingForNotificationType = {
-    [NotificationType.daily]: '8am',
-    [NotificationType.weekly]: 'Friday:8am',
-    [NotificationType.monthly]: 'first:8am',
-  };
-
   const notificationTypes = [];
   // eslint-disable-next-line guard-for-in
   for (const type in NotificationType) {
@@ -482,6 +504,125 @@ export const notificationFrequencyHandler = async ({
         userId: user.id,
         type: type as NotificationType,
         timing: defaultTimingForNotificationType[type as NotificationType],
+      },
+    });
+  });
+
+  await refreshHomeView(client, slackUserId, slackOrgId);
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const isTimingSetting = (obj: any): obj is Timing => {
+  return obj && 'notification_timing' in obj;
+};
+
+export const notificationTimingHandler = async ({
+  ack,
+  body,
+  context,
+  client,
+}: {
+  ack: AckFn<void> | AckFn<string | SayArguments> | AckFn<DialogValidation>;
+  body: SlackAction;
+  context: Context;
+  client: WebClient;
+}) => {
+  ack();
+  logger.info('notificationTimingHandler called', context, { structuredData: true });
+
+  const { view } = body as BlockAction<ButtonAction>;
+  if (!view) {
+    return;
+  }
+
+  const { values } = view.state as unknown as NotificationSettingsState;
+  const selectedNotificationTypes =
+    values.notification_frequency.notification_frequency.selected_options.map(
+      (option) => option.value as NotificationType
+    );
+
+  const groupedOptions: GroupedOptions = {
+    daily: [],
+    weekly: [],
+    monthly: [],
+  };
+
+  // eslint-disable-next-line guard-for-in
+  for (const key in values) {
+    const item = values[key as keyof typeof values];
+    if (isTimingSetting(item)) {
+      if (key.startsWith('daily')) {
+        const newKey = key.replace('daily_', '');
+        groupedOptions.daily.push({
+          [newKey]: item.notification_timing.selected_option.value,
+        });
+      } else if (key.startsWith('weekly')) {
+        const newKey = key.replace('weekly_', '');
+        groupedOptions.weekly.push({
+          [newKey]: item.notification_timing.selected_option.value,
+        });
+      } else if (key.startsWith('monthly')) {
+        const newKey = key.replace('monthly_', '');
+        groupedOptions.monthly.push({
+          [newKey]: item.notification_timing.selected_option.value,
+        });
+      }
+    }
+  }
+
+  const notificationTimingValues: { daily?: string; weekly?: string; monthly?: string } = {};
+
+  if (groupedOptions.daily.length) {
+    notificationTimingValues.daily = groupedOptions.daily[0].timeOfDay;
+  }
+
+  if (groupedOptions.weekly.length) {
+    const weeklyParts: string[] = [];
+    for (const item of groupedOptions.weekly) {
+      if (item.dayOfWeek) weeklyParts.push(item.dayOfWeek);
+      if (item.timeOfDay) weeklyParts.push(item.timeOfDay);
+    }
+    notificationTimingValues.weekly = weeklyParts.join(':');
+  }
+
+  if (groupedOptions.monthly.length) {
+    const monthlyParts: string[] = [];
+    for (const item of groupedOptions.monthly) {
+      if (item.dayOfMonth) monthlyParts.push(item.dayOfMonth);
+      if (item.timeOfDay) monthlyParts.push(item.timeOfDay);
+    }
+    notificationTimingValues.monthly = monthlyParts.join(':');
+  }
+
+  const { userId: slackUserId, teamId: slackOrgId } = context;
+  if (!slackUserId || !slackOrgId) {
+    throw new Error('Not found');
+  }
+  const user = await prisma.user.findUnique({
+    where: {
+      slackId: slackUserId,
+    },
+  });
+
+  if (!user) {
+    throw new Error('Not found');
+  }
+
+  selectedNotificationTypes.map(async (type: NotificationType) => {
+    await prisma.notificationSetting.upsert({
+      where: {
+        userId_type: {
+          userId: user.id,
+          type: type as NotificationType,
+        },
+      },
+      update: {
+        timing: notificationTimingValues[type],
+      },
+      create: {
+        userId: user.id,
+        type: type as NotificationType,
+        timing: notificationTimingValues[type] || defaultTimingForNotificationType[type],
       },
     });
   });

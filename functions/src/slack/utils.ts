@@ -227,7 +227,7 @@ export const NOTIFICATION_TIMING_OPTIONS = {
     {
       text: {
         type: 'plain_text',
-        text: 'First',
+        text: 'First of the month',
         emoji: true,
       },
       value: 'first',
@@ -235,7 +235,7 @@ export const NOTIFICATION_TIMING_OPTIONS = {
     {
       text: {
         type: 'plain_text',
-        text: 'Last',
+        text: 'Last of the month',
         emoji: true,
       },
       value: 'last',
