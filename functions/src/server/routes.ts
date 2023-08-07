@@ -96,4 +96,30 @@ router.get('/oauth/:provider/callback', async (req, res) => {
   return res.redirect(`https://slack.com/app_redirect?app=${process.env.SLACK_APP_ID}`);
 });
 
+router.get('/webhooks/incoming/github', async (req, res) => {
+  const { headers, body } = req;
+  const { 'x-github-event': event, 'x-hub-signature': signature } = headers;
+  const { organization, repository, sender, installation } = body;
+  const { id: organizationId } = organization;
+  const { id: repositoryId } = repository;
+  const { id: senderId } = sender;
+  const { id: installationId } = installation;
+
+  console.log(
+    'GitHub Webhook',
+    event,
+    signature,
+    organizationId,
+    repositoryId,
+    senderId,
+    installationId
+  );
+
+  // logger.info('GitHub Webhook', event, organizationId, repositoryId, senderId, installationId, {
+  //   structuredData: true,
+  // });
+
+  return res.send('Ok');
+});
+
 export default router;
