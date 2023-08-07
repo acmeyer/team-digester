@@ -16,6 +16,7 @@ import { Config } from '../config';
 import { NotificationType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { refreshHomeView } from './viewHandlers';
+import { startCase } from 'lodash';
 
 type NotificationSettingsState = {
   values: {
@@ -628,4 +629,75 @@ export const notificationTimingHandler = async ({
   });
 
   await refreshHomeView(client, slackUserId, slackOrgId);
+};
+
+export const showAddUsernameHandler = async ({
+  ack,
+  body,
+  context,
+  client,
+}: {
+  ack: AckFn<void> | AckFn<string | SayArguments> | AckFn<DialogValidation>;
+  body: SlackAction;
+  context: Context;
+  client: WebClient;
+}) => {
+  ack();
+
+  const { userId: slackUserId, teamId: slackOrgId } = context;
+
+  if (!slackUserId || !slackOrgId) {
+    throw new Error('Not found');
+  }
+
+  const user = await prisma.user.findUnique({
+    where: {
+      slackId: slackUserId,
+    },
+  });
+
+  if (!user) {
+    throw new Error('Not found');
+  }
+
+  const { trigger_id: triggerId, actions } = body as BlockAction<ButtonAction>;
+  const provider = actions[0].value;
+
+  client.views.open({
+    token: Config.SLACK_BOT_TOKEN,
+    trigger_id: triggerId,
+    view: {
+      type: 'modal',
+      callback_id: 'add_username_modal',
+      private_metadata: JSON.stringify({
+        provider,
+      }),
+      title: {
+        type: 'plain_text',
+        text: `Add ${startCase(provider)} Username`,
+      },
+      submit: {
+        type: 'plain_text',
+        text: 'Submit',
+      },
+      blocks: [
+        {
+          type: 'input',
+          block_id: `${provider}`,
+          element: {
+            type: 'plain_text_input',
+            action_id: 'username',
+            placeholder: {
+              type: 'plain_text',
+              text: 'Enter your username',
+            },
+          },
+          label: {
+            type: 'plain_text',
+            text: `${startCase(provider)} Username`,
+          },
+        },
+      ],
+    },
+  });
 };

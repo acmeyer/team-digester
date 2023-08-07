@@ -79,27 +79,27 @@ export const OAUTH_INTEGRATIONS: OAuthIntegrations = {
       email: 'email',
     }
   ),
-  jira: new OAuthProvider(
-    'JIRA',
-    'jira',
-    "Connect your JIRA account to stay updated on all of your team's activity across your projects.",
-    Config.JIRA_CLIENT_ID,
-    Config.JIRA_CLIENT_SECRET,
-    `${Config.API_BASE_URL}/oauth/jira/callback`,
-    'https://auth.atlassian.com/authorize',
-    'https://auth.atlassian.com/oauth/token',
-    'https://api.atlassian.com/me',
-    'offline_access read:account read:me read:jira-work read:jira-user manage:jira-webhook',
-    {
-      audience: 'api.atlassian.com',
-      prompt: 'consent',
-      response_type: 'code',
-    },
-    {
-      uid: 'account_id',
-      email: 'email',
-      name: 'name',
-      pictureUrl: 'picture',
-    }
-  ),
+  // jira: new OAuthProvider(
+  //   'JIRA',
+  //   'jira',
+  //   "Connect your JIRA account to stay updated on all of your team's activity across your projects.",
+  //   Config.JIRA_CLIENT_ID,
+  //   Config.JIRA_CLIENT_SECRET,
+  //   `${Config.API_BASE_URL}/oauth/jira/callback`,
+  //   'https://auth.atlassian.com/authorize',
+  //   'https://auth.atlassian.com/oauth/token',
+  //   'https://api.atlassian.com/me',
+  //   'offline_access read:account read:me read:jira-work read:jira-user manage:jira-webhook',
+  //   {
+  //     audience: 'api.atlassian.com',
+  //     prompt: 'consent',
+  //     response_type: 'code',
+  //   },
+  //   {
+  //     uid: 'account_id',
+  //     email: 'email',
+  //     name: 'name',
+  //     pictureUrl: 'picture',
+  //   }
+  // ),
 };

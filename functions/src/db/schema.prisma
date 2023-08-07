@@ -118,4 +118,6 @@ model IntegrationProviderAccount {
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, userId])
 }
