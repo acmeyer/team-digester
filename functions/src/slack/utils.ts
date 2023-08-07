@@ -1,4 +1,4 @@
-import { Installation, InstallationQuery } from '@slack/bolt';
+import { Installation, InstallationQuery, Option } from '@slack/bolt';
 import { app } from './index';
 import * as logger from 'firebase-functions/logger';
 import { User, Prisma } from '@prisma/client';
@@ -152,4 +152,93 @@ export const findOrCreateUser = async (slackId: string, slackOrgId: string): Pro
       },
     },
   });
+};
+
+export const NOTIFICATION_TIMING_OPTIONS = {
+  timeOfDay: [
+    {
+      text: {
+        type: 'plain_text',
+        text: '8:00 AM',
+        emoji: true,
+      },
+      value: '8am',
+    },
+    {
+      text: {
+        type: 'plain_text',
+        text: '12:00 PM',
+        emoji: true,
+      },
+      value: '12pm',
+    },
+    {
+      text: {
+        type: 'plain_text',
+        text: '5:00 PM',
+        emoji: true,
+      },
+      value: '5pm',
+    },
+  ] as Option[],
+  dayOfWeek: [
+    {
+      text: {
+        type: 'plain_text',
+        text: 'Monday',
+        emoji: true,
+      },
+      value: 'monday',
+    },
+    {
+      text: {
+        type: 'plain_text',
+        text: 'Tuesday',
+        emoji: true,
+      },
+      value: 'tuesday',
+    },
+    {
+      text: {
+        type: 'plain_text',
+        text: 'Wednesday',
+        emoji: true,
+      },
+      value: 'wednesday',
+    },
+    {
+      text: {
+        type: 'plain_text',
+        text: 'Thursday',
+        emoji: true,
+      },
+      value: 'thursday',
+    },
+    {
+      text: {
+        type: 'plain_text',
+        text: 'Friday',
+        emoji: true,
+      },
+      value: 'friday',
+    },
+  ] as Option[],
+  dayOfMonth: [
+    {
+      text: {
+        type: 'plain_text',
+        text: 'First',
+        emoji: true,
+      },
+      value: 'first',
+    },
+    {
+      text: {
+        type: 'plain_text',
+        text: 'Last',
+        emoji: true,
+      },
+      value: 'last',
+    },
+  ] as Option[],
 };

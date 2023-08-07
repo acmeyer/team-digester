@@ -401,6 +401,7 @@ export const notificationFrequencyHandler = async ({
   ack,
   body,
   context,
+  client,
 }: {
   ack: AckFn<void> | AckFn<string | SayArguments> | AckFn<DialogValidation>;
   body: SlackAction;
@@ -419,7 +420,10 @@ export const notificationFrequencyHandler = async ({
     values.notification_frequency.notification_frequency.selected_options.map(
       (option) => option.value
     );
-  const { userId: slackUserId } = context;
+  const { userId: slackUserId, teamId: slackOrgId } = context;
+  if (!slackUserId || !slackOrgId) {
+    throw new Error('Not found');
+  }
   const user = await prisma.user.findUnique({
     where: {
       slackId: slackUserId,
@@ -430,10 +434,41 @@ export const notificationFrequencyHandler = async ({
     throw new Error('Not found');
   }
 
-  console.log('selectedeNotificationTypes', selectedNotificationTypes);
+  const defaultTimingForNotificationType = {
+    [NotificationType.daily]: '8am',
+    [NotificationType.weekly]: 'Friday:8am',
+    [NotificationType.monthly]: 'first:8am',
+  };
 
-  // TODO: go through all notification types
-  // update ones selected as enabled and disable the rest
+  const notificationTypes = [];
+  // eslint-disable-next-line guard-for-in
+  for (const type in NotificationType) {
+    notificationTypes.push(type);
+  }
+  await Promise.all(
+    notificationTypes.map(async (type) => {
+      const notificationType = type as NotificationType;
+      const isEnabled = selectedNotificationTypes.includes(notificationType);
+
+      await prisma.notificationSetting.upsert({
+        where: {
+          userId_type: {
+            userId: user.id,
+            type: notificationType,
+          },
+        },
+        update: {
+          isEnabled: isEnabled,
+        },
+        create: {
+          userId: user.id,
+          type: notificationType,
+          timing: defaultTimingForNotificationType[notificationType],
+          isEnabled: isEnabled,
+        },
+      });
+    })
+  );
   selectedNotificationTypes.map(async (type) => {
     await prisma.notificationSetting.upsert({
       where: {
@@ -442,16 +477,14 @@ export const notificationFrequencyHandler = async ({
           type: type as NotificationType,
         },
       },
-      update: {
-        timing: 'daily',
-      },
+      update: {},
       create: {
         userId: user.id,
         type: type as NotificationType,
-        timing: 'daily',
+        timing: defaultTimingForNotificationType[type as NotificationType],
       },
     });
   });
 
-  // TODO: update the home view
+  await refreshHomeView(client, slackUserId, slackOrgId);
 };

@@ -1,11 +1,17 @@
 /* eslint-disable max-len */
 import { KnownBlock, HomeView, Button, Option } from '@slack/bolt';
 import * as logger from 'firebase-functions/logger';
-import { IntegrationProviderAccount, User, NotificationType } from '@prisma/client';
+import {
+  IntegrationProviderAccount,
+  User,
+  NotificationType,
+  NotificationSetting,
+  // NotificationSetting,
+} from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import * as crypto from 'crypto';
-import { flatMap } from 'lodash';
+import { flatMap, startCase } from 'lodash';
 import {
   OauthStateStore,
   OrganizationWithIntegrationConnections,
@@ -14,6 +20,7 @@ import {
   UserWithNotificationSettings,
 } from '../types';
 import { OAUTH_INTEGRATIONS, OAuthIntegrations, OAuthProvider } from '../lib/oauth';
+import { NOTIFICATION_TIMING_OPTIONS } from './utils';
 
 export const createAppHomeView = async (
   slackUserId: string,
@@ -336,7 +343,7 @@ const integrationsSection = (
   ];
 };
 
-const getSettingOption = (type: string): Option => {
+const getNotificationSettingOption = (type: string): Option => {
   switch (type) {
     case NotificationType.daily:
       return {
@@ -390,13 +397,155 @@ const getSettingOption = (type: string): Option => {
   }
 };
 
+// const getNotificationTimingSelectedOptions = (
+//   settings: NotificationSetting
+// ): Option[] | undefined => {
+//   return [];
+// };
+
+const timingNotificationSettingsSection = (
+  userNotficationSettings: NotificationSetting[]
+): KnownBlock[] => {
+  const blocks = [
+    {
+      block_id: 'notification_timing',
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: '*When would you like your summaries sent to you?*',
+      },
+    } as KnownBlock,
+  ];
+
+  // for each enabled notification setting, show options for timing
+  userNotficationSettings.forEach((setting) => {
+    blocks.push({
+      type: 'section',
+      block_id: `notification_timing_${setting.type}_section`,
+      text: {
+        type: 'mrkdwn',
+        text: `*${startCase(setting.type)} notifications*`,
+      },
+    } as KnownBlock);
+    blocks.push({
+      type: 'divider',
+    } as KnownBlock);
+    switch (setting.type) {
+      case NotificationType.daily:
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: "The time of day you would like to receive a summary of your team's activity every week day.",
+          },
+          accessory: {
+            type: 'static_select',
+            action_id: `notification_timing_${setting.type}_time`,
+            placeholder: {
+              type: 'plain_text',
+              text: 'Time of day',
+              emoji: true,
+            },
+            options: NOTIFICATION_TIMING_OPTIONS.timeOfDay,
+            // initial_options: getNotificationTimingSelectedOptions(setting),
+          },
+        } as KnownBlock);
+        break;
+      case NotificationType.weekly:
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: "The day of the week you would like to receive a summary of your team's activity every week.",
+          },
+          accessory: {
+            type: 'static_select',
+            action_id: `notification_timing_${setting.type}_day`,
+            placeholder: {
+              type: 'plain_text',
+              text: 'Day of week',
+              emoji: true,
+            },
+            options: NOTIFICATION_TIMING_OPTIONS.dayOfWeek,
+            // initial_options: getNotificationTimingSelectedOptions(setting),
+          },
+        } as KnownBlock);
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: "The time of day you would like to receive a summary of your team's activity every week.",
+          },
+          accessory: {
+            type: 'static_select',
+            action_id: `notification_timing_${setting.type}_time`,
+            placeholder: {
+              type: 'plain_text',
+              text: 'Time of day',
+              emoji: true,
+            },
+            options: NOTIFICATION_TIMING_OPTIONS.timeOfDay,
+            // initial_options: getNotificationTimingSelectedOptions(setting),
+          },
+        } as KnownBlock);
+        break;
+      case NotificationType.monthly:
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: "The day of the month you would like to receive a summary of your team's activity every month.",
+          },
+          accessory: {
+            type: 'static_select',
+            action_id: `notification_timing_${setting.type}_day`,
+            placeholder: {
+              type: 'plain_text',
+              text: 'Day of month',
+              emoji: true,
+            },
+            options: NOTIFICATION_TIMING_OPTIONS.dayOfMonth,
+            // initial_options: getNotificationTimingSelectedOptions(setting),
+          },
+        } as KnownBlock);
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: "The time of day you would like to receive a summary of your team's activity every month.",
+          },
+          accessory: {
+            type: 'static_select',
+            action_id: `notification_timing_${setting.type}_time`,
+            placeholder: {
+              type: 'plain_text',
+              text: 'Time of day',
+              emoji: true,
+            },
+            options: NOTIFICATION_TIMING_OPTIONS.timeOfDay,
+            // initial_options: getNotificationTimingSelectedOptions(setting),
+          },
+        } as KnownBlock);
+        break;
+      default:
+        break;
+    }
+  });
+
+  console.log('blocks', blocks);
+
+  return blocks;
+};
+
 const settingsSection = (user: UserWithNotificationSettings): KnownBlock[] => {
   const userNotficationSettings = user.notificationSettings;
-  let initialNotificationSettings;
+  let initialNotificationSettings = [] as Option[];
   if (userNotficationSettings && userNotficationSettings.length > 0) {
-    initialNotificationSettings = userNotficationSettings.map((setting) => {
-      return getSettingOption(setting.type);
-    });
+    initialNotificationSettings = userNotficationSettings
+      .filter((setting) => setting.isEnabled)
+      .map((setting) => {
+        return getNotificationSettingOption(setting.type);
+      });
   }
 
   const notificationTypes = [];
@@ -405,7 +554,7 @@ const settingsSection = (user: UserWithNotificationSettings): KnownBlock[] => {
     notificationTypes.push(type);
   }
 
-  return [
+  const blocks = [
     {
       type: 'header',
       text: {
@@ -422,60 +571,25 @@ const settingsSection = (user: UserWithNotificationSettings): KnownBlock[] => {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: 'What types of summaries would you like to be sent to you?',
+        text: '*What types of summaries would you like to be sent to you?*',
       },
       accessory: {
         type: 'checkboxes',
-        initial_options: initialNotificationSettings,
+        initial_options:
+          initialNotificationSettings?.length > 0 ? initialNotificationSettings : undefined,
         options: notificationTypes.map((type: string) => {
-          return getSettingOption(type);
+          return getNotificationSettingOption(type);
         }),
         action_id: 'notification_frequency',
       },
     },
-    // TODO: show notification timing settings based on enabled notification types
-    // {
-    //   block_id: 'notification_timing',
-    //   type: 'section',
-    //   text: {
-    //     type: 'mrkdwn',
-    //     text: 'When would you like your summaries sent to you?',
-    //   },
-    //   accessory: {
-    //     type: 'static_select',
-    //     placeholder: {
-    //       type: 'plain_text',
-    //       text: 'Select an item',
-    //       emoji: true,
-    //     },
-    //     options: [
-    //       {
-    //         text: {
-    //           type: 'plain_text',
-    //           text: 'Morning (8am in your timezone)',
-    //           emoji: true,
-    //         },
-    //         value: 'morning',
-    //       },
-    //       {
-    //         text: {
-    //           type: 'plain_text',
-    //           text: 'Mid-day (12pm in your timezone)',
-    //           emoji: true,
-    //         },
-    //         value: 'midday',
-    //       },
-    //       {
-    //         text: {
-    //           type: 'plain_text',
-    //           text: 'Evening (6pm in your timezone)',
-    //           emoji: true,
-    //         },
-    //         value: 'evening',
-    //       },
-    //     ],
-    //     action_id: 'notification_timing',
-    //   },
-    // },
-  ];
+  ] as KnownBlock[];
+
+  const enabledNotficationSettings = user.notificationSettings.filter(
+    (setting) => setting.isEnabled
+  );
+  if (enabledNotficationSettings && enabledNotficationSettings.length > 0) {
+    blocks.push(...timingNotificationSettingsSection(enabledNotficationSettings));
+  }
+  return blocks;
 };
