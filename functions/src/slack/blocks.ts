@@ -6,7 +6,6 @@ import {
   User,
   NotificationType,
   NotificationSetting,
-  // NotificationSetting,
 } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
@@ -19,8 +18,8 @@ import {
   OrganizationWithTeams,
   UserWithNotificationSettings,
 } from '../types';
-import { OAUTH_INTEGRATIONS, OAuthIntegrations, OAuthProvider } from '../lib/oauth';
 import { NOTIFICATION_TIMING_OPTIONS } from './utils';
+import { INTEGRATIONS, Integrations, Integration } from '../lib/integrations';
 
 export const createAppHomeView = async (
   slackUserId: string,
@@ -69,7 +68,7 @@ export const createAppHomeView = async (
       },
     }),
   ]);
-  const integrations = OAUTH_INTEGRATIONS;
+  const integrations = INTEGRATIONS;
 
   if (!user || !organization) {
     // Something went wrong, user and org should exist
@@ -251,7 +250,7 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
 const addIntegrationConnectionButton = (
   user: User,
   organization: OrganizationWithIntegrationConnections,
-  integration: OAuthProvider,
+  integration: Integration,
   additionalActions?: Button[]
 ): ActionsBlock => {
   const state = crypto.randomBytes(16).toString('hex');
@@ -260,6 +259,7 @@ const addIntegrationConnectionButton = (
     userId: user.id,
   };
   redis.set(`oauth:state:${state}`, JSON.stringify(stateData));
+  const connectionUrl = integration.getFullConnectionUrl(state);
 
   const actions = [
     {
@@ -270,7 +270,7 @@ const addIntegrationConnectionButton = (
         emoji: true,
       },
       action_id: 'connect_integration',
-      url: `${integration.getAuthorizationUrl(state)}`,
+      url: connectionUrl,
     } as Button,
   ];
 
@@ -285,7 +285,7 @@ const addIntegrationConnectionButton = (
 };
 
 const integrationBlocks = (
-  integration: OAuthProvider,
+  integration: Integration,
   organization: OrganizationWithIntegrationConnections,
   user: User
 ): KnownBlock[] => {
@@ -366,9 +366,9 @@ const integrationBlocks = (
 const integrationsSection = (
   user: User,
   organization: OrganizationWithIntegrationConnections,
-  integrations: OAuthIntegrations
+  integrations: Integrations
 ): KnownBlock[] => {
-  const detailsSection = flatMap(integrations, (integration: OAuthProvider) => {
+  const detailsSection = flatMap(integrations, (integration: Integration) => {
     return integrationBlocks(integration, organization, user);
   });
 
