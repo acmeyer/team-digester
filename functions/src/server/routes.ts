@@ -7,6 +7,8 @@ import { OauthStateStore } from '../types';
 import { Config } from '../config';
 import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
 import { Prisma } from '@prisma/client';
+import { createAppAuth } from '@octokit/auth-app';
+import fs from 'fs';
 
 const githubWebhooks = new Webhooks({
   secret: Config.GITHUB_WEBHOOK_SECRET,
@@ -163,6 +165,14 @@ githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
     throw new Error('Integration provider account not found');
   }
 
+  // get a token for later usage
+  const privateKey = fs.readFileSync(Config.GITHUB_PRIVATE_KEY_PATH, 'utf-8');
+  const auth = createAppAuth({
+    appId: Config.GITHUB_APP_ID,
+    privateKey: privateKey,
+    installationId: installation.id,
+  });
+  const installationAuth = await auth({ type: 'installation' });
   // Use installation to create a new integration installation
   await prisma.integrationInstallation.create({
     data: {
@@ -171,6 +181,7 @@ githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
       data: installation as unknown as Prisma.JsonObject,
       installedById: integrationProviderAccount.id,
       organizationId: integrationProviderAccount.organizationId,
+      accessToken: installationAuth.token,
     },
   });
 });

@@ -11,6 +11,8 @@ export const Config = {
   GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID as string,
   GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET as string,
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG as string,
+  GITHUB_APP_ID: process.env.GITHUB_APP_ID as string,
+  GITHUB_PRIVATE_KEY_PATH: process.env.GITHUB_PRIVATE_KEY_PATH as string,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID as string,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET as string,
   JIRA_CLIENT_ID: process.env.JIRA_CLIENT_ID as string,
