@@ -133,14 +133,65 @@ githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
   // TODO: remove installations from the database
 });
 
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request
 githubWebhooks.on('pull_request', async ({ id, name, payload }) => {
   console.log('pull_request callback', { id, name, payload });
 });
 
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review_comment
+githubWebhooks.on('pull_request_review_comment', async ({ id, name, payload }) => {
+  console.log('pull_request_review_comment callback', { id, name, payload });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review
+githubWebhooks.on('pull_request_review', async ({ id, name, payload }) => {
+  console.log('pull_request_review callback', { id, name, payload });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review_thread
+githubWebhooks.on('pull_request_review_thread', async ({ id, name, payload }) => {
+  console.log('pull_request_review_thread callback', { id, name, payload });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#push
 githubWebhooks.on('push', async ({ id, name, payload }) => {
   console.log('push callback', { id, name, payload });
 });
 
-// TODO: handle other events
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#release
+githubWebhooks.on('release', async ({ id, name, payload }) => {
+  console.log('release callback', { id, name, payload });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
+githubWebhooks.on('issue_comment', async ({ id, name, payload }) => {
+  // Created and edited only
+  console.log('issue_comment callback', { id, name, payload });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issues
+githubWebhooks.on('issues', async ({ id, name, payload }) => {
+  console.log('issues callback', { id, name, payload });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#deployment
+githubWebhooks.on('deployment', async ({ id, name, payload }) => {
+  console.log('deployment callback', { id, name, payload });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#discussion
+githubWebhooks.on('discussion', async ({ id, name, payload }) => {
+  console.log('discussion callback', { id, name, payload });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#discussion_comment
+githubWebhooks.on('discussion_comment', async ({ id, name, payload }) => {
+  console.log('discussion_comment callback', { id, name, payload });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#commit_comment
+githubWebhooks.on('commit_comment', async ({ id, name, payload }) => {
+  console.log('commit_comment callback', { id, name, payload });
+});
 
 export default router;
