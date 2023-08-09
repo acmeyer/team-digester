@@ -27,7 +27,8 @@
     "firebase-admin": "^11.8.0",
     "firebase-functions": "^4.3.1",
     "helmet": "^7.0.0",
-    "lodash": "^4.17.21"
+    "lodash": "^4.17.21",
+    "octokit": "^3.1.0"
   },
   "devDependencies": {
     "@types/compression": "^1.7.2",

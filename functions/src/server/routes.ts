@@ -4,20 +4,24 @@ import * as logger from 'firebase-functions/logger';
 import { redis } from '../lib/redis';
 import { prisma } from '../lib/prisma';
 import { OauthStateStore } from '../types';
-import { OAUTH_INTEGRATIONS } from '../lib/oauth';
-import { forEach } from 'lodash';
+import { Config } from '../config';
+import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
+
+const githubWebhooks = new Webhooks({
+  secret: Config.GITHUB_WEBHOOK_SECRET,
+});
 
 router.get('/health_check', (_req, res) => {
   res.send('Ok');
 });
 
-router.get('/oauth/:provider/callback', async (req, res) => {
-  const { provider } = req.params as { provider: 'github' | 'jira' };
+router.get('/github/callback', async (req, res) => {
   const { searchParams } = new URL(req.url, process.env.API_BASE_URL);
   const code = searchParams.get('code');
   const state = searchParams.get('state');
+  const payload = req.body;
 
-  logger.info('OAuth Callback', provider, code, state, { structuredData: true });
+  logger.info('Github Callback', code, state, payload, { structuredData: true });
 
   if (!code || !state) {
     throw new Error('Missing code or state');
@@ -37,89 +41,98 @@ router.get('/oauth/:provider/callback', async (req, res) => {
       },
     }),
   ]);
-  const integration = OAUTH_INTEGRATIONS[provider];
 
-  if (!organization || !user || !integration) {
+  if (!organization || !user) {
     throw new Error('Invalid request');
   }
 
-  const resp = await fetch(`${integration.tokenUri}`, {
+  const resp = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
     body: JSON.stringify({
-      client_id: integration.clientId,
-      client_secret: integration.clientSecret,
+      client_id: Config.GITHUB_CLIENT_ID,
+      client_secret: Config.GITHUB_CLIENT_SECRET,
       code: code,
       grant_type: 'authorization_code',
-      scope: integration.scope,
-      redirect_uri: integration.redirectUri,
+      scope: 'user project repo read:org',
+      redirect_uri: `${Config.API_BASE_URL}/github/callback`,
       state: state,
     }),
   });
   const authData = await resp.json();
-  const profileResult = await fetch(`${integration.profileUri}`, {
+  const profileResult = await fetch('https://api.github.com/user', {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${authData.access_token}`,
     },
   });
   const profileResultData = await profileResult.json();
-  const profileData: { [key: string]: string } = {};
-  forEach(integration.profileDataKeyMap, (value, key) => {
-    if (profileResultData[value]) {
-      profileData[key] = profileResultData[value].toString();
-    }
-  });
 
-  await prisma.integrationProviderAccount.create({
-    data: {
-      provider: provider,
-      uid: profileData.uid,
-      username: profileData.username,
-      name: profileData.name,
-      pictureUrl: profileData.pictureUrl,
-      email: profileData.email,
-      rawProfileData: JSON.stringify(profileResultData),
-      rawAuthData: authData,
-      accessToken: authData.access_token,
-      refreshToken: authData.refresh_token,
-      expiresIn: authData.expires_in,
-      scope: authData.scope,
-      organizationId: organization.id,
-      userId: user.id,
-    },
-  });
+  try {
+    await prisma.integrationProviderAccount.create({
+      data: {
+        provider: 'github',
+        uid: profileResultData.id.toString(),
+        username: profileResultData.login,
+        name: profileResultData.name,
+        pictureUrl: profileResultData.avatar_url,
+        email: profileResultData.email,
+        rawProfileData: JSON.stringify(profileResultData),
+        rawAuthData: authData,
+        accessToken: authData.access_token,
+        refreshToken: authData.refresh_token,
+        expiresIn: authData.expires_in,
+        scope: authData.scope,
+        organizationId: organization.id,
+        userId: user.id,
+      },
+    });
 
-  return res.redirect(`https://slack.com/app_redirect?app=${process.env.SLACK_APP_ID}`);
+    return res.redirect(`https://slack.com/app_redirect?app=${Config.SLACK_APP_ID}`);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).send({
+      message: 'Failed to create integration provider account',
+    });
+  }
 });
 
-router.post('/webhooks/incoming/github', async (req, res) => {
-  const { headers, body } = req;
-  const { 'x-github-event': event, 'x-hub-signature': signature } = headers;
-  const { organization, repository, sender, installation } = body;
-  const { id: organizationId } = organization;
-  const { id: repositoryId } = repository;
-  const { id: senderId } = sender;
-  const { id: installationId } = installation;
+router.post('/github/webhooks', async (req, res) => {
+  const { headers } = req;
+  const { 'x-github-event': event } = headers;
 
-  console.log(
-    'GitHub Webhook',
-    event,
-    signature,
-    organizationId,
-    repositoryId,
-    senderId,
-    installationId
-  );
-
-  // logger.info('GitHub Webhook', event, organizationId, repositoryId, senderId, installationId, {
-  //   structuredData: true,
-  // });
-
-  return res.send('Ok');
+  try {
+    const webhook = {
+      id: req.header('X-GitHub-Delivery') || '',
+      name: event as EmitterWebhookEventName,
+      payload: JSON.stringify(req.body),
+      signature: req.header('X-Hub-Signature') || '',
+    };
+    await githubWebhooks.verifyAndReceive(webhook);
+    return res.status(200).send({
+      message: 'Ok',
+    });
+  } catch (err) {
+    logger.error(err, { structuredData: true });
+    return res.status(401).send({
+      error: 'Unauthorized',
+    });
+  }
 });
+
+githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
+  console.log('installation.created callback', { id, name, payload });
+  // TODO: record installations somewhere in the database
+});
+
+githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
+  console.log('installation.deleted callback', { id, name, payload });
+  // TODO: remove installations from the database
+});
+
+// TODO: handle other events
 
 export default router;
