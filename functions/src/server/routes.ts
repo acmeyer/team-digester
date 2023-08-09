@@ -133,6 +133,14 @@ githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
   // TODO: remove installations from the database
 });
 
+githubWebhooks.on('pull_request', async ({ id, name, payload }) => {
+  console.log('pull_request callback', { id, name, payload });
+});
+
+githubWebhooks.on('push', async ({ id, name, payload }) => {
+  console.log('push callback', { id, name, payload });
+});
+
 // TODO: handle other events
 
 export default router;
