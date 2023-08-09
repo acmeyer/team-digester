@@ -8,7 +8,7 @@ import {
 } from '@prisma/client';
 
 export interface OauthStateStore {
-  organizationId: string;
+  organizationId?: string;
   userId: string;
 }
 

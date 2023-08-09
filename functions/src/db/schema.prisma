@@ -53,14 +53,16 @@ model Organization {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  teams                  Team[]
-  members                User[]
-  slackInstallations     SlackInstallation[]
-  integrationConnections IntegrationProviderAccount[]
+  teams                    Team[]
+  members                  User[]
+  slackInstallations       SlackInstallation[]
+  integrationConnections   IntegrationProviderAccount[]
+  integrationInstallations IntegrationInstallation[]
 }
 
 model SlackInstallation {
   id                  String   @id @default(dbgenerated("nanoid(14)"))
+  token               String
   slackId             String   @unique
   isEnterpriseInstall Boolean  @default(false)
   installation        Json
@@ -97,6 +99,20 @@ model TeamMembership {
   @@unique([teamId, userId])
 }
 
+model IntegrationInstallation {
+  id              String   @id @default(dbgenerated("nanoid(14)"))
+  integrationName String
+  externalId      String   @unique
+  data            Json
+  organizationId  String
+  installedById   String   @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  installedBy  IntegrationProviderAccount @relation(fields: [installedById], references: [id], onDelete: Cascade)
+}
+
 model IntegrationProviderAccount {
   id             String   @id @default(dbgenerated("nanoid(14)"))
   provider       String
@@ -116,8 +132,9 @@ model IntegrationProviderAccount {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  integrationInstallation IntegrationInstallation?
 
-  @@unique([provider, userId])
+  @@unique([provider, userId, organizationId])
 }

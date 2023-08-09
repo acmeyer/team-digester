@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { OauthStateStore } from '../types';
 import { Config } from '../config';
 import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
+import { Prisma } from '@prisma/client';
 
 const githubWebhooks = new Webhooks({
   secret: Config.GITHUB_WEBHOOK_SECRET,
@@ -72,15 +73,33 @@ router.get('/github/callback', async (req, res) => {
   const profileResultData = await profileResult.json();
 
   try {
-    await prisma.integrationProviderAccount.create({
-      data: {
+    await prisma.integrationProviderAccount.upsert({
+      where: {
+        provider_userId_organizationId: {
+          userId: user.id,
+          organizationId: organization.id,
+          provider: 'github',
+        },
+      },
+      update: {
+        name: profileResultData.name,
+        pictureUrl: profileResultData.avatar_url,
+        email: profileResultData.email,
+        rawProfileData: profileResultData as Prisma.JsonObject,
+        rawAuthData: authData,
+        accessToken: authData.access_token,
+        refreshToken: authData.refresh_token,
+        expiresIn: authData.expires_in,
+        scope: authData.scope,
+      },
+      create: {
         provider: 'github',
         uid: profileResultData.id.toString(),
         username: profileResultData.login,
         name: profileResultData.name,
         pictureUrl: profileResultData.avatar_url,
         email: profileResultData.email,
-        rawProfileData: JSON.stringify(profileResultData),
+        rawProfileData: profileResultData as Prisma.JsonObject,
         rawAuthData: authData,
         accessToken: authData.access_token,
         refreshToken: authData.refresh_token,
@@ -125,12 +144,47 @@ router.post('/github/webhooks', async (req, res) => {
 
 githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
   console.log('installation.created callback', { id, name, payload });
-  // TODO: record installations somewhere in the database
+
+  const { installation, sender } = payload;
+
+  // Use sender to find integration provider account, should already exist
+  const integrationProviderAccount = await prisma.integrationProviderAccount.findFirst({
+    where: {
+      provider: 'github',
+      uid: sender.id.toString(),
+    },
+    include: {
+      user: true,
+    },
+  });
+
+  if (!integrationProviderAccount) {
+    console.error('Integration provider account not found');
+    throw new Error('Integration provider account not found');
+  }
+
+  // Use installation to create a new integration installation
+  await prisma.integrationInstallation.create({
+    data: {
+      integrationName: 'github',
+      externalId: installation.id.toString(),
+      data: installation as unknown as Prisma.JsonObject,
+      installedById: integrationProviderAccount.id,
+      organizationId: integrationProviderAccount.organizationId,
+    },
+  });
 });
 
 githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
   console.log('installation.deleted callback', { id, name, payload });
-  // TODO: remove installations from the database
+  const { installation } = payload;
+
+  // Remove the integration installation from the database
+  await prisma.integrationInstallation.delete({
+    where: {
+      externalId: installation.id.toString(),
+    },
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request

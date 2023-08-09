@@ -5,17 +5,25 @@ import {
   BasicSlackEvent,
   SayFn,
   HomeView,
+  Context,
 } from '@slack/bolt';
-import { app } from './index';
 import { createAppHomeView } from './blocks';
-import { Config } from '../config';
 import * as logger from 'firebase-functions/logger';
+import { WebClient } from '@slack/web-api';
 
 export interface HomeViewWithTeam extends HomeView {
   team_id: string;
 }
 
-export const appHomeOpenedHandler = async ({ event }: { event: AppHomeOpenedEvent }) => {
+export const appHomeOpenedHandler = async ({
+  event,
+  context,
+  client,
+}: {
+  event: AppHomeOpenedEvent;
+  context: Context;
+  client: WebClient;
+}) => {
   logger.info('appHomeOpenedHandler', event, { structuredData: true });
 
   if (event.tab !== 'home') {
@@ -23,12 +31,17 @@ export const appHomeOpenedHandler = async ({ event }: { event: AppHomeOpenedEven
   }
 
   const user = event.user;
-  const view = event.view as HomeViewWithTeam;
-  const teamId = view.team_id;
+  const teamId = context.teamId;
+  const token = context.botToken;
+
+  if (!teamId) {
+    // Something went wrong
+    throw new Error('Invalid request');
+  }
 
   const homeView = await createAppHomeView(user, teamId);
-  await app.client.views.publish({
-    token: Config.SLACK_BOT_TOKEN,
+  await client.views.publish({
+    token: token,
     user_id: user,
     view: homeView,
   });

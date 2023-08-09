@@ -12,7 +12,6 @@ import {
 } from '@slack/bolt';
 import { KnownBlock, ModalView, WebClient } from '@slack/web-api';
 import * as logger from 'firebase-functions/logger';
-import { Config } from '../config';
 import { NotificationType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { refreshHomeView } from './viewHandlers';
@@ -224,6 +223,7 @@ const createTeamsModal = async (slackUserId: string, slackOrgId: string): Promis
 
 export const refreshTeamsModal = async (
   client: WebClient,
+  token: string | undefined,
   slackUserId: string,
   slackOrgId: string,
   viewId?: string
@@ -234,7 +234,7 @@ export const refreshTeamsModal = async (
 
   const teamsModal = await createTeamsModal(slackUserId, slackOrgId);
   await client.views.update({
-    token: Config.SLACK_BOT_TOKEN,
+    token: token,
     view_id: viewId,
     view: teamsModal,
   });
@@ -257,7 +257,7 @@ export const showCreateTeamHandler = async ({
   logger.info('showCreateTeam called', context, { structuredData: true });
 
   client.views.open({
-    token: Config.SLACK_BOT_TOKEN,
+    token: context.botToken,
     trigger_id: (body as BlockAction<BlockElementAction>).trigger_id,
     view: teamModal({
       teamName: '',
@@ -302,7 +302,7 @@ export const showEditTeamHandler = async ({
   }
 
   client.views.open({
-    token: Config.SLACK_BOT_TOKEN,
+    token: context.botToken,
     trigger_id: triggerId,
     view: teamModal({
       teamName: team.name || '',
@@ -335,7 +335,7 @@ export const showJoinTeamHandler = async ({
 
   const teamsModal = await createTeamsModal(body.user.id, teamId);
   client.views.open({
-    token: Config.SLACK_BOT_TOKEN,
+    token: context.botToken,
     trigger_id: triggerId,
     view: teamsModal,
   });
@@ -378,7 +378,7 @@ export const joinTeamHandler = async ({
   });
 
   await Promise.all([
-    refreshTeamsModal(client, slackUserId, slackOrgId, view?.id),
+    refreshTeamsModal(client, context.botToken, slackUserId, slackOrgId, view?.id),
     refreshHomeView(client, slackUserId, slackOrgId),
   ]);
 };
@@ -421,7 +421,7 @@ export const leaveTeamHandler = async ({
   });
 
   await Promise.all([
-    refreshTeamsModal(client, slackUserId, slackOrgId, view?.id),
+    refreshTeamsModal(client, context.botToken, slackUserId, slackOrgId, view?.id),
     refreshHomeView(client, slackUserId, slackOrgId),
   ]);
 };
@@ -664,7 +664,7 @@ export const showAddUsernameHandler = async ({
   const provider = actions[0].value;
 
   client.views.open({
-    token: Config.SLACK_BOT_TOKEN,
+    token: context.botToken,
     trigger_id: triggerId,
     view: {
       type: 'modal',

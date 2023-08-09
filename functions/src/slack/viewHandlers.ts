@@ -54,9 +54,14 @@ export const refreshHomeView = async (
   slackUserId: string,
   slackOrgId: string
 ) => {
+  const slackInstallation = await prisma.slackInstallation.findUnique({
+    where: {
+      slackId: slackOrgId,
+    },
+  });
   const homeView = await createAppHomeView(slackUserId, slackOrgId);
   await client.views.publish({
-    token: Config.SLACK_BOT_TOKEN,
+    token: slackInstallation?.token,
     user_id: slackUserId,
     view: homeView,
   });
@@ -69,10 +74,16 @@ const sendTeamCreatedNotifications = async (
   invitingUser: User,
   teamName: string
 ) => {
+  const slackInstallation = await prisma.slackInstallation.findUnique({
+    where: {
+      slackId: slackOrgId,
+    },
+  });
+
   return Promise.all(
     teamMembers.map((member) =>
       client.chat.postMessage({
-        token: Config.SLACK_BOT_TOKEN,
+        token: slackInstallation?.token,
         channel: member.slackId,
         text: `${invitingUser.name} added to the *${teamName}* team! Go to <slack://app?team=${slackOrgId}&id=${Config.SLACK_APP_ID}&tab=home|the home tab> to configure your settings.`,
       })
@@ -322,9 +333,10 @@ export const addUsernameModalHandler = async ({
 
   await prisma.integrationProviderAccount.upsert({
     where: {
-      provider_userId: {
+      provider_userId_organizationId: {
         userId: user.id,
         provider: provider,
+        organizationId: organization.id,
       },
     },
     update: {

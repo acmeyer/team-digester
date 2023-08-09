@@ -26,6 +26,9 @@ export const saveInstallation = async (installation: Installation): Promise<void
     isEnterpriseInstall = false;
   }
 
+  const authToken =
+    installation.tokenType === 'bot' ? installation.bot?.token : installation.user.token;
+
   if (slackId !== undefined && isEnterpriseInstall !== undefined) {
     const slackInstall = await getInstallationFromDatabase(slackId);
 
@@ -34,8 +37,9 @@ export const saveInstallation = async (installation: Installation): Promise<void
       await prisma.slackInstallation.create({
         data: {
           slackId: slackId,
+          token: authToken || Config.SLACK_BOT_TOKEN,
           isEnterpriseInstall: isEnterpriseInstall,
-          installation: JSON.stringify(installation),
+          installation: installation as unknown as Prisma.JsonObject,
           organization: {
             create: {
               slackId: slackId,
@@ -57,13 +61,8 @@ export const saveInstallation = async (installation: Installation): Promise<void
           slackId: slackId,
         },
         data: {
-          installation: {
-            ...(slackInstall.installation as Prisma.JsonObject),
-            user: installation.user,
-            appId: installation.appId,
-            authversion: installation.authVersion,
-            bot: installation.bot,
-          },
+          token: authToken || Config.SLACK_BOT_TOKEN,
+          installation: slackInstall.installation as Prisma.JsonObject,
         },
       });
 
@@ -131,8 +130,14 @@ export const findOrCreateUser = async (slackId: string, slackOrgId: string): Pro
     return user;
   }
 
+  const slackInstallation = await prisma.slackInstallation.findUnique({
+    where: {
+      slackId: slackOrgId,
+    },
+  });
+
   const slackUserData = await app.client.users.profile.get({
-    token: Config.SLACK_BOT_TOKEN,
+    token: slackInstallation?.token,
     user: slackId,
   });
 

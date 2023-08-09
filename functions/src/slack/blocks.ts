@@ -81,10 +81,6 @@ export const createAppHomeView = async (
   const isNewUser = user.teamMemberships.length < 1;
   const orgHasIntegrations = organization.integrationConnections.length > 0;
 
-  organization.teams.map((team) => {
-    team.members;
-  });
-
   return {
     type: 'home',
     blocks: [
