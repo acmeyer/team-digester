@@ -88,15 +88,14 @@ model IntegrationInstallation {
   id              String   @id @default(dbgenerated("nanoid(14)"))
   integrationName String
   externalId      String
+  accountName     String?
   data            Json?
   accessToken     String?
   organizationId  String?
-  installedById   String?  @unique
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  organization Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  installedBy  IntegrationAccount? @relation(fields: [installedById], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([integrationName, externalId])
 }
@@ -120,9 +119,8 @@ model IntegrationAccount {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  integrationInstallation IntegrationInstallation?
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([integrationName, externalId, organizationId])
   @@unique([integrationName, userId, organizationId])

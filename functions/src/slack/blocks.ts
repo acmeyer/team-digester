@@ -12,7 +12,7 @@ import { redis } from '../lib/redis';
 import * as crypto from 'crypto';
 import { flatMap, startCase, sortBy, indexOf } from 'lodash';
 import {
-  OauthStateStore,
+  GithubOauthStateStore,
   OrganizationWithIntegrationAccounts,
   OrganizationWithIntegrationAccountsAndInstallations,
   UserWithTeams,
@@ -21,7 +21,6 @@ import {
 } from '../types';
 import { NOTIFICATION_TIMING_OPTIONS } from './utils';
 import { INTEGRATIONS, Integrations, Integration } from '../lib/integrations';
-import { Installation as GithubInstallation } from '@octokit/webhooks-types';
 import { INTEGRATION_NAMES } from '../lib/constants';
 
 export const createAppHomeView = async (
@@ -270,7 +269,7 @@ const addIntegrationConnectionButton = (
   additionalActions?: Button[]
 ): ActionsBlock => {
   const state = crypto.randomBytes(16).toString('hex');
-  const stateData: OauthStateStore = {
+  const stateData: GithubOauthStateStore = {
     organizationId: organization.id,
     userId: user.id,
   };
@@ -326,18 +325,12 @@ const integrationBlocks = (
   // TODO: update this when more integrations are added
   if (integration.value === INTEGRATION_NAMES.GITHUB) {
     if (integrationInstallation) {
-      const installationData = integrationInstallation.data as unknown as GithubInstallation;
-      const installationAccountName =
-        installationData.target_type === 'User'
-          ? `${installationData.account.login}'s account`
-          : `${installationData.account.name}`;
-
       headerBlocks.push({
         type: 'context',
         elements: [
           {
             type: 'mrkdwn',
-            text: `:white_check_mark: Installed on ${installationAccountName}`,
+            text: `:white_check_mark: Installed on ${integrationInstallation.accountName}'s account`,
           },
         ],
       });

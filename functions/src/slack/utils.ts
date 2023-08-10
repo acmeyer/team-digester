@@ -42,6 +42,9 @@ export const saveInstallation = async (installation: Installation): Promise<void
         data: {
           integrationName: INTEGRATION_NAMES.SLACK,
           externalId: slackId,
+          accountName: installation.enterprise
+            ? installation.enterprise.name
+            : installation.team?.name,
           accessToken: authToken || Config.SLACK_BOT_TOKEN,
           data: installation as unknown as Prisma.JsonObject,
         },
@@ -69,6 +72,9 @@ export const saveInstallation = async (installation: Installation): Promise<void
         data: {
           accessToken: authToken || Config.SLACK_BOT_TOKEN,
           data: slackInstall.data as Prisma.JsonObject,
+          accountName: installation.enterprise
+            ? installation.enterprise.name
+            : installation.team?.name,
         },
       });
       // Create or connect organization and user

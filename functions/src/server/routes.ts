@@ -3,11 +3,12 @@ const router = express.Router();
 import * as logger from 'firebase-functions/logger';
 import { redis } from '../lib/redis';
 import { prisma } from '../lib/prisma';
-import { OauthStateStore } from '../types';
+import { GithubOauthStateStore } from '../types';
 import { Config } from '../config';
 import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
 import { Prisma } from '@prisma/client';
 import { createAppAuth } from '@octokit/auth-app';
+import { Octokit } from '@octokit/core';
 import fs from 'fs';
 import { INTEGRATION_NAMES } from '../lib/constants';
 
@@ -19,20 +20,54 @@ router.get('/health_check', (_req, res) => {
   res.send('Ok');
 });
 
+router.get('/github/installation/setup', async (req, res) => {
+  const { searchParams } = new URL(req.url, process.env.API_BASE_URL);
+  const state = searchParams.get('state');
+  const installationId = searchParams.get('installation_id');
+  const setupAction = searchParams.get('setup_action');
+
+  logger.info('Github Installation Setup', state, { structuredData: true });
+
+  if (!state) {
+    logger.error('Missing state', { structuredData: true });
+    return res.status(400).send('Missing state');
+  }
+
+  if (setupAction === 'install') {
+    if (!installationId) {
+      logger.error('Missing installation id', { structuredData: true });
+      return res.status(400).send('Missing installation id');
+    }
+    const stateData = (await redis.get(`oauth:state:${state}`)) as GithubOauthStateStore;
+    const { organizationId, userId } = stateData;
+    await redis.set(
+      `oauth:state:${state}`,
+      JSON.stringify({ organizationId, userId, githubInstallationId: installationId })
+    );
+
+    // Add installation id to state and redirect to authorization url
+    // eslint-disable-next-line max-len
+    const authorizationUrl = `https://github.com/login/oauth/authorize?client_id=${Config.GITHUB_CLIENT_ID}&redirect_uri=${Config.API_BASE_URL}/github/callback&state=${state}&scope=user%20project%20repo%20read:org`;
+    return res.redirect(authorizationUrl);
+  } else {
+    logger.error('Unknown setup action', setupAction, { structuredData: true });
+    return res.status(400).send('Unknown setup action');
+  }
+});
+
 router.get('/github/callback', async (req, res) => {
   const { searchParams } = new URL(req.url, process.env.API_BASE_URL);
   const code = searchParams.get('code');
   const state = searchParams.get('state');
-  const payload = req.body;
 
-  logger.info('Github Callback', code, state, payload, { structuredData: true });
+  logger.info('Github Callback', code, state, { structuredData: true });
 
   if (!code || !state) {
     throw new Error('Missing code or state');
   }
 
-  const stateData = (await redis.get(`oauth:state:${state}`)) as OauthStateStore;
-  const { organizationId, userId } = stateData;
+  const stateData = (await redis.get(`oauth:state:${state}`)) as GithubOauthStateStore;
+  const { organizationId, userId, githubInstallationId } = stateData;
   const [organization, user] = await Promise.all([
     prisma.organization.findUnique({
       where: {
@@ -47,7 +82,9 @@ router.get('/github/callback', async (req, res) => {
   ]);
 
   if (!organization || !user) {
-    throw new Error('Invalid request');
+    // In the future, we should handle a situation where the user or organization does not exist yet
+    logger.error('Organization or user not found', { structuredData: true });
+    return res.status(400).send('Invalid request');
   }
 
   const resp = await fetch('https://github.com/login/oauth/access_token', {
@@ -67,14 +104,9 @@ router.get('/github/callback', async (req, res) => {
     }),
   });
   const authData = await resp.json();
-  const profileResult = await fetch('https://api.github.com/user', {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${authData.access_token}`,
-    },
-  });
-  const profileResultData = await profileResult.json();
 
+  const octokit = new Octokit({ auth: authData.access_token });
+  const { data: userProfileData } = await octokit.request('GET /user');
   try {
     await prisma.integrationAccount.upsert({
       where: {
@@ -85,10 +117,10 @@ router.get('/github/callback', async (req, res) => {
         },
       },
       update: {
-        name: profileResultData.name,
-        pictureUrl: profileResultData.avatar_url,
-        email: profileResultData.email,
-        rawProfileData: profileResultData as Prisma.JsonObject,
+        name: userProfileData.name,
+        pictureUrl: userProfileData.avatar_url,
+        email: userProfileData.email,
+        rawProfileData: userProfileData as Prisma.JsonObject,
         rawAuthData: authData,
         accessToken: authData.access_token,
         refreshToken: authData.refresh_token,
@@ -97,12 +129,12 @@ router.get('/github/callback', async (req, res) => {
       },
       create: {
         integrationName: INTEGRATION_NAMES.GITHUB,
-        externalId: profileResultData.id.toString(),
-        username: profileResultData.login,
-        name: profileResultData.name,
-        pictureUrl: profileResultData.avatar_url,
-        email: profileResultData.email,
-        rawProfileData: profileResultData as Prisma.JsonObject,
+        externalId: userProfileData.id.toString(),
+        username: userProfileData.login,
+        name: userProfileData.name,
+        pictureUrl: userProfileData.avatar_url,
+        email: userProfileData.email,
+        rawProfileData: userProfileData as Prisma.JsonObject,
         rawAuthData: authData,
         accessToken: authData.access_token,
         refreshToken: authData.refresh_token,
@@ -113,6 +145,69 @@ router.get('/github/callback', async (req, res) => {
       },
     });
 
+    if (githubInstallationId) {
+      // Verify that the installation id is valid and user is associated with it
+      const { data: installationsData } = await octokit.request('GET /user/installations');
+      const installationData = installationsData.installations.find((installation) => {
+        return installation.id.toString() === githubInstallationId;
+      });
+      if (!installationData) {
+        logger.error('Installation not found', githubInstallationId, userProfileData.id, {
+          structuredData: true,
+        });
+        return res.status(400).send('Invalid request');
+      }
+
+      // Set up the installation
+      const privateKey = fs.readFileSync(Config.GITHUB_PRIVATE_KEY_PATH, 'utf-8');
+      const auth = createAppAuth({
+        appId: Config.GITHUB_APP_ID,
+        privateKey: privateKey,
+        installationId: githubInstallationId,
+      });
+      const installationAuth = await auth({ type: 'installation' });
+
+      // Get account name
+      let accountName = '';
+      if (installationData.target_type === 'Organization') {
+        const { data: organizationData } = await octokit.request('GET /orgs/{org}', {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          org: installationData.account?.login,
+        });
+        accountName = organizationData.name || organizationData.login;
+      } else {
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        accountName = installationData.account?.login;
+      }
+
+      // Use installation to create or update a new integration installation,
+      // one should in theory already exist from the webhook
+      await prisma.integrationInstallation.upsert({
+        where: {
+          integrationName_externalId: {
+            integrationName: INTEGRATION_NAMES.GITHUB,
+            externalId: githubInstallationId.toString(),
+          },
+        },
+        update: {
+          data: installationData as unknown as Prisma.JsonObject,
+          accessToken: installationAuth.token,
+          accountName: accountName,
+          organizationId: organization.id,
+        },
+        create: {
+          integrationName: INTEGRATION_NAMES.GITHUB,
+          externalId: githubInstallationId.toString(),
+          accountName: accountName,
+          data: installationData as unknown as Prisma.JsonObject,
+          accessToken: installationAuth.token,
+          organizationId: organization.id,
+        },
+      });
+    }
+
     return res.redirect(`https://slack.com/app_redirect?app=${Config.SLACK_APP_ID}`);
   } catch (err) {
     console.error(err);
@@ -120,17 +215,6 @@ router.get('/github/callback', async (req, res) => {
       message: 'Failed to create integration provider account',
     });
   }
-});
-
-router.get('/github/installation/setup', async (req, res) => {
-  // This is a test to see what I can do with it
-  console.log('github installation setup', {
-    req,
-  });
-
-  return res.status(200).send({
-    message: 'Ok',
-  });
 });
 
 router.post('/github/webhooks', async (req, res) => {
@@ -157,9 +241,7 @@ router.post('/github/webhooks', async (req, res) => {
 });
 
 githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
-  console.log('installation.created callback', { id, name, payload });
-
-  console.log('installation account', payload.installation.account);
+  logger.info('installation.created callback', id, name, payload, { structuredData: true });
 
   const { installation } = payload;
 
@@ -171,27 +253,24 @@ githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
     installationId: installation.id,
   });
   const installationAuth = await auth({ type: 'installation' });
-  // Use installation to create a new integration installation
-  await prisma.integrationInstallation.create({
-    data: {
+  // Use installation to create a new integration installation if necessary,
+  // this is a placeholder until it's completed after the OAuth flow
+  await prisma.integrationInstallation.upsert({
+    where: {
+      integrationName_externalId: {
+        integrationName: INTEGRATION_NAMES.GITHUB,
+        externalId: installation.id.toString(),
+      },
+    },
+    update: {}, // We'll skip updating anyting in the webhook since it should be taken care of in the OAuth flow
+    create: {
       integrationName: INTEGRATION_NAMES.GITHUB,
       externalId: installation.id.toString(),
       data: installation as unknown as Prisma.JsonObject,
       accessToken: installationAuth.token,
+      accountName: installation.account?.name || installation.account?.login,
     },
   });
-
-  // Try to link user and organization here
-  // Use sender to find integration provider account
-  // const integrationProviderAccount = await prisma.integrationProviderAccount.findFirst({
-  //   where: {
-  //     provider: INTEGRATION_NAMES.GITHUB,
-  //     uid: sender.id.toString(),
-  //   },
-  //   include: {
-  //     user: true,
-  //   },
-  // });
 });
 
 githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
