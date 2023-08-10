@@ -2,7 +2,7 @@
 import { KnownBlock, HomeView, Button, Option, ActionsBlock } from '@slack/bolt';
 import * as logger from 'firebase-functions/logger';
 import {
-  IntegrationProviderAccount,
+  // IntegrationProviderAccount,
   User,
   NotificationType,
   NotificationSetting,
@@ -14,12 +14,14 @@ import { flatMap, startCase, sortBy, indexOf } from 'lodash';
 import {
   OauthStateStore,
   OrganizationWithIntegrationConnections,
+  OrganizationWithIntegrationConnectionsAndInstallations,
   UserWithTeams,
   OrganizationWithTeams,
   UserWithNotificationSettings,
 } from '../types';
 import { NOTIFICATION_TIMING_OPTIONS } from './utils';
 import { INTEGRATIONS, Integrations, Integration } from '../lib/integrations';
+import { Installation as GithubInstallation } from '@octokit/webhooks-types';
 
 export const createAppHomeView = async (
   slackUserId: string,
@@ -65,6 +67,7 @@ export const createAppHomeView = async (
           },
         },
         integrationConnections: true,
+        integrationInstallations: true,
       },
     }),
   ]);
@@ -79,7 +82,9 @@ export const createAppHomeView = async (
   }
 
   const isNewUser = user.teamMemberships.length < 1;
-  const orgHasIntegrations = organization.integrationConnections.length > 0;
+  const orgHasIntegrations =
+    organization.integrationConnections.length > 0 ||
+    organization.integrationInstallations.length > 0;
 
   return {
     type: 'home',
@@ -282,13 +287,15 @@ const addIntegrationConnectionButton = (
 
 const integrationBlocks = (
   integration: Integration,
-  organization: OrganizationWithIntegrationConnections,
+  organization: OrganizationWithIntegrationConnectionsAndInstallations,
   user: User
 ): KnownBlock[] => {
-  const integrationConnections = organization.integrationConnections;
-  const integrationConnection = integrationConnections.find(
-    (ic: IntegrationProviderAccount) => ic.provider === integration.value
+  const integrationInstallation = organization.integrationInstallations.find(
+    (ii) => ii.integrationName === integration.value
   );
+  // const integrationConnections = organization.integrationConnections.filter(
+  //   (ic: IntegrationProviderAccount) => ic.provider === integration.value
+  // );
 
   const headerBlocks = [
     {
@@ -300,60 +307,70 @@ const integrationBlocks = (
     },
   ] as KnownBlock[];
 
-  if (integrationConnection) {
-    headerBlocks.push({
-      type: 'context',
-      elements: [
-        {
+  // Github is the only integration for now and it has some custom logic
+  // TODO: update this when more integrations are added
+  if (integration.value === 'github') {
+    if (integrationInstallation) {
+      const installationData = integrationInstallation.data as unknown as GithubInstallation;
+      const installationAccountName =
+        installationData.target_type === 'User'
+          ? `${installationData.account.login}'s account`
+          : `${installationData.account.name}`;
+
+      headerBlocks.push({
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: `:white_check_mark: Installed on ${installationAccountName}`,
+          },
+        ],
+      });
+
+      // if (integrationConnection.provider === 'github') {
+      //   if (!integrationConnection.userId || integrationConnection.userId !== user.id) {
+      //     headerBlocks.push({
+      //       type: 'section',
+      //       text: {
+      //         type: 'mrkdwn',
+      //         text: "You have not connected your GitHub account yet. In order to share your actvity with your team, you'll need to tell us your account information. You can do this by either connecting your account directly or entering your GitHub username.",
+      //       },
+      //     });
+      //     headerBlocks.push(
+      //       addIntegrationConnectionButton(user, organization, integration, [
+      //         {
+      //           type: 'button',
+      //           text: {
+      //             type: 'plain_text',
+      //             text: 'Add Username',
+      //             emoji: true,
+      //           },
+      //           action_id: 'show_add_username',
+      //           value: 'github',
+      //         } as Button,
+      //       ])
+      //     );
+      //   } else {
+      //     headerBlocks.push({
+      //       type: 'section',
+      //       text: {
+      //         type: 'mrkdwn',
+      //         text: `You're connected as *@${integrationConnection.username}*`,
+      //       },
+      //     });
+      //   }
+      // }
+
+      return headerBlocks;
+    } else {
+      headerBlocks.push({
+        type: 'section',
+        text: {
           type: 'mrkdwn',
-          text: ':white_check_mark: Connected',
+          text: `${integration.description}`,
         },
-      ],
-    });
-
-    if (integrationConnection.provider === 'github') {
-      if (!integrationConnection.userId || integrationConnection.userId !== user.id) {
-        headerBlocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: "You have not connected your GitHub account yet. In order to share your actvity with your team, you'll need to tell us your account information. You can do this by either connecting your account directly or entering your GitHub username.",
-          },
-        });
-        headerBlocks.push(
-          addIntegrationConnectionButton(user, organization, integration, [
-            {
-              type: 'button',
-              text: {
-                type: 'plain_text',
-                text: 'Add Username',
-                emoji: true,
-              },
-              action_id: 'show_add_username',
-              value: 'github',
-            } as Button,
-          ])
-        );
-      } else {
-        headerBlocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `You're connected as *@${integrationConnection.username}*`,
-          },
-        });
-      }
+      });
     }
-
-    return headerBlocks;
-  } else {
-    headerBlocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `${integration.description}`,
-      },
-    });
   }
 
   return [...headerBlocks, addIntegrationConnectionButton(user, organization, integration)];
@@ -361,7 +378,7 @@ const integrationBlocks = (
 
 const integrationsSection = (
   user: User,
-  organization: OrganizationWithIntegrationConnections,
+  organization: OrganizationWithIntegrationConnectionsAndInstallations,
   integrations: Integrations
 ): KnownBlock[] => {
   const detailsSection = flatMap(integrations, (integration: Integration) => {

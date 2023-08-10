@@ -147,6 +147,8 @@ router.post('/github/webhooks', async (req, res) => {
 githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
   console.log('installation.created callback', { id, name, payload });
 
+  console.log('installation account', payload.installation.account);
+
   const { installation, sender } = payload;
 
   // Use sender to find integration provider account, should already exist

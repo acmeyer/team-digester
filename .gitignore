@@ -64,4 +64,4 @@ node_modules/
 
 # dotenv environment variables file
 .env*
-githubAppKey.pem
+githubAppKey*.pem

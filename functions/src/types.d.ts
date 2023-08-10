@@ -5,6 +5,7 @@ import {
   Team,
   TeamMembership,
   NotificationSetting,
+  IntegrationInstallation,
 } from '@prisma/client';
 
 export interface OauthStateStore {
@@ -14,6 +15,11 @@ export interface OauthStateStore {
 
 export interface OrganizationWithIntegrationConnections extends Organization {
   integrationConnections: IntegrationProviderAccount[];
+}
+
+export interface OrganizationWithIntegrationConnectionsAndInstallations extends Organization {
+  integrationConnections: IntegrationProviderAccount[];
+  integrationInstallations: IntegrationInstallation[];
 }
 
 export interface OrganizationWithTeams extends Organization {
