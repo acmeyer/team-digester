@@ -10,6 +10,8 @@ import {
 import { createAppHomeView } from './blocks';
 import * as logger from 'firebase-functions/logger';
 import { WebClient } from '@slack/web-api';
+import { prisma } from '../lib/prisma';
+import { INTEGRATION_NAMES } from '../lib/constants';
 
 export interface HomeViewWithTeam extends HomeView {
   team_id: string;
@@ -76,7 +78,29 @@ export const appDirectMessageHandler = async ({
   // }
 };
 
-export const appUninstalledHandler = async ({ event }: { event: AppUninstalledEvent }) => {
-  logger.info('app_uninstalled', event, { structuredData: true });
-  return;
+export const appUninstalledHandler = async ({
+  event,
+  context,
+}: {
+  event: AppUninstalledEvent;
+  context: Context;
+}) => {
+  logger.info('app_uninstalled', event, context, { structuredData: true });
+
+  console.log('slack.app_uninstalled webhook called', {
+    event,
+    context,
+  });
+
+  const slackId = context.isEnterpriseInstall ? context.enterpriseId : context.teamId;
+
+  // Remove the Slack installation from database
+  await prisma.integrationInstallation.delete({
+    where: {
+      integrationName_externalId: {
+        externalId: slackId || '',
+        integrationName: INTEGRATION_NAMES.SLACK,
+      },
+    },
+  });
 };
