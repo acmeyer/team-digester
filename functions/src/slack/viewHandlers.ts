@@ -3,10 +3,12 @@ import { AckFn, ViewResponseAction, ViewOutput, SlackViewAction, Context } from 
 import * as logger from 'firebase-functions/logger';
 import { createAppHomeView } from './blocks';
 import { prisma } from '../lib/prisma';
-import { findOrCreateUser } from './utils';
+import { findOrCreateUserFromSlack } from './utils';
 import { Config } from '../config';
 import { WebClient } from '@slack/web-api';
 import { User } from '@prisma/client';
+import { INTEGRATION_NAMES } from '../lib/constants';
+import { findUserFromSlackId, findSlackIdForUserAndOrganization } from '../lib/utils';
 
 type TeamFormState = {
   values: {
@@ -54,14 +56,17 @@ export const refreshHomeView = async (
   slackUserId: string,
   slackOrgId: string
 ) => {
-  const slackInstallation = await prisma.slackInstallation.findUnique({
+  const slackInstallation = await prisma.integrationInstallation.findUnique({
     where: {
-      slackId: slackOrgId,
+      integrationName_externalId: {
+        integrationName: INTEGRATION_NAMES.SLACK,
+        externalId: slackOrgId,
+      },
     },
   });
   const homeView = await createAppHomeView(slackUserId, slackOrgId);
   await client.views.publish({
-    token: slackInstallation?.token,
+    token: slackInstallation?.accessToken as string | undefined,
     user_id: slackUserId,
     view: homeView,
   });
@@ -74,20 +79,42 @@ const sendTeamCreatedNotifications = async (
   invitingUser: User,
   teamName: string
 ) => {
-  const slackInstallation = await prisma.slackInstallation.findUnique({
+  const slackInstallation = await prisma.integrationInstallation.findUnique({
+    where: {
+      integrationName_externalId: {
+        integrationName: INTEGRATION_NAMES.SLACK,
+        externalId: slackOrgId,
+      },
+    },
+  });
+
+  const organization = await prisma.organization.findUnique({
     where: {
       slackId: slackOrgId,
     },
   });
 
+  if (!organization) {
+    logger.error('No organization found', { structuredData: true });
+    throw new Error('Something went wrong! No organization found');
+  }
+
   return Promise.all(
-    teamMembers.map((member) =>
+    teamMembers.map(async (member) => {
+      // Get the slack ID of the user
+      const slackId = await findSlackIdForUserAndOrganization(member.id, slackOrgId);
+
+      if (!slackId) {
+        logger.error('No Slack ID found for user', member, { structuredData: true });
+        return;
+      }
+
       client.chat.postMessage({
-        token: slackInstallation?.token,
-        channel: member.slackId,
+        token: slackInstallation?.accessToken as string | undefined,
+        channel: slackId,
         text: `${invitingUser.name} added to the *${teamName}* team! Go to <slack://app?team=${slackOrgId}&id=${Config.SLACK_APP_ID}&tab=home|the home tab> to configure your settings.`,
-      })
-    )
+      });
+    })
   );
 };
 
@@ -132,10 +159,15 @@ export const createTeamModalHandler = async ({
       },
     });
 
+    if (!organization) {
+      logger.error('No organization found', body, { structuredData: true });
+      throw new Error('Something went wrong! No organization found');
+    }
+
     const teamMembers = await Promise.all(
-      slackTeamMemberIds.map((id) => findOrCreateUser(id, slackOrgId))
+      slackTeamMemberIds.map((id) => findOrCreateUserFromSlack(id, organization))
     );
-    const user = await findOrCreateUser(slackUserId, slackOrgId);
+    const user = await findOrCreateUserFromSlack(slackUserId, organization);
 
     await prisma.team.create({
       data: {
@@ -155,7 +187,7 @@ export const createTeamModalHandler = async ({
     });
 
     // Send notifications to team members, except the user who created the team
-    const filteredTeamMembers = teamMembers.filter((member) => member.slackId !== slackUserId);
+    const filteredTeamMembers = teamMembers.filter((member) => member.id !== user.id);
     await sendTeamCreatedNotifications(
       client,
       filteredTeamMembers,
@@ -206,11 +238,22 @@ export const editTeamModalHandler = async ({
   }
 
   try {
+    const organization = await prisma.organization.findUnique({
+      where: {
+        slackId: slackOrgId,
+      },
+    });
+
+    if (!organization) {
+      logger.error('No organization found', body, { structuredData: true });
+      throw new Error('Something went wrong! No organization found');
+    }
+
     const teamId = JSON.parse(body.view.private_metadata).teamId;
     const teamMembers = await Promise.all(
-      slackTeamMemberIds.map((id) => findOrCreateUser(id, slackOrgId))
+      slackTeamMemberIds.map((id) => findOrCreateUserFromSlack(id, organization))
     );
-    const user = await findOrCreateUser(slackUserId, slackOrgId);
+    const user = await findOrCreateUserFromSlack(slackUserId, organization);
 
     // Store current team members for later use
     const currentTeamMembers = await prisma.teamMembership.findMany({
@@ -261,7 +304,7 @@ export const editTeamModalHandler = async ({
     // Send notifications to only new members, except the user who updated the team
     const filteredTeamMembers = teamMembers.filter(
       (member) =>
-        member.slackId !== slackUserId &&
+        member.id !== user.id &&
         !currentTeamMembers.find((currentMember) => currentMember.userId === member.id)
     );
     await sendTeamCreatedNotifications(
@@ -314,28 +357,27 @@ export const addUsernameModalHandler = async ({
     throw new Error('Not found');
   }
 
-  const [user, organization] = await Promise.all([
-    prisma.user.findUnique({
-      where: {
-        slackId: slackUserId,
-      },
-    }),
-    prisma.organization.findUnique({
-      where: {
-        slackId: slackOrgId,
-      },
-    }),
-  ]);
+  const organization = await prisma.organization.findUnique({
+    where: {
+      slackId: slackOrgId,
+    },
+  });
 
-  if (!user || !organization) {
-    throw new Error('Not found');
+  if (!organization) {
+    throw new Error('Organization not found');
   }
 
-  await prisma.integrationProviderAccount.upsert({
+  const user = await findUserFromSlackId(slackUserId, organization.id);
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  await prisma.integrationAccount.upsert({
     where: {
-      provider_userId_organizationId: {
+      integrationName_userId_organizationId: {
         userId: user.id,
-        provider: provider,
+        integrationName: provider,
         organizationId: organization.id,
       },
     },
@@ -343,9 +385,10 @@ export const addUsernameModalHandler = async ({
       username,
     },
     create: {
+      externalId: slackUserId,
       userId: user.id,
       organizationId: organization.id,
-      provider: provider,
+      integrationName: provider,
       username,
     },
   });

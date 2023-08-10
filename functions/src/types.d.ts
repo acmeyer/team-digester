@@ -1,6 +1,6 @@
 import {
   Organization,
-  IntegrationProviderAccount,
+  IntegrationAccount,
   User,
   Team,
   TeamMembership,
@@ -13,12 +13,12 @@ export interface OauthStateStore {
   userId: string;
 }
 
-export interface OrganizationWithIntegrationConnections extends Organization {
-  integrationConnections: IntegrationProviderAccount[];
+export interface OrganizationWithIntegrationAccounts extends Organization {
+  integrationAccounts: IntegrationAccount[];
 }
 
-export interface OrganizationWithIntegrationConnectionsAndInstallations extends Organization {
-  integrationConnections: IntegrationProviderAccount[];
+export interface OrganizationWithIntegrationAccountsAndInstallations extends Organization {
+  integrationAccounts: IntegrationAccount[];
   integrationInstallations: IntegrationInstallation[];
 }
 
@@ -30,8 +30,8 @@ export interface TeamWithMembers extends Team {
   members: TeamMembershipWithUser[];
 }
 
-export interface OrganizationWithIntegrationConnectionsAndTeams
-  extends OrganizationWithIntegrationConnections {
+export interface OrganizationWithintegrationAccountsAndTeams
+  extends OrganizationWithIntegrationAccounts {
   teams: Team[];
 }
 

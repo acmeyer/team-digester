@@ -2,7 +2,7 @@
 import { KnownBlock, HomeView, Button, Option, ActionsBlock } from '@slack/bolt';
 import * as logger from 'firebase-functions/logger';
 import {
-  // IntegrationProviderAccount,
+  // IntegrationAccount,
   User,
   NotificationType,
   NotificationSetting,
@@ -13,8 +13,8 @@ import * as crypto from 'crypto';
 import { flatMap, startCase, sortBy, indexOf } from 'lodash';
 import {
   OauthStateStore,
-  OrganizationWithIntegrationConnections,
-  OrganizationWithIntegrationConnectionsAndInstallations,
+  OrganizationWithIntegrationAccounts,
+  OrganizationWithIntegrationAccountsAndInstallations,
   UserWithTeams,
   OrganizationWithTeams,
   UserWithNotificationSettings,
@@ -22,6 +22,7 @@ import {
 import { NOTIFICATION_TIMING_OPTIONS } from './utils';
 import { INTEGRATIONS, Integrations, Integration } from '../lib/integrations';
 import { Installation as GithubInstallation } from '@octokit/webhooks-types';
+import { INTEGRATION_NAMES } from '../lib/constants';
 
 export const createAppHomeView = async (
   slackUserId: string,
@@ -30,61 +31,75 @@ export const createAppHomeView = async (
   logger.info('createAppHomeView', slackUserId, slackOrgId, { structuredData: true });
 
   // Determine blocks to show based on user, organization, and team states
-  const [user, organization] = await Promise.all([
-    prisma.user.findUnique({
+  const organization = await prisma.organization.findUnique({
+    where: {
+      slackId: slackOrgId,
+    },
+    include: {
+      teams: {
+        include: {
+          members: {
+            include: {
+              user: true,
+            },
+          },
+        },
+      },
+      integrationAccounts: true,
+      integrationInstallations: true,
+    },
+  });
+
+  if (!organization) {
+    // Something went wrong, org should exist
+    logger.error('Organization not found', slackUserId, slackOrgId, { structuredData: true });
+    throw new Error('Organization not found');
+  }
+
+  const user = await prisma.integrationAccount
+    .findUnique({
       where: {
-        slackId: slackUserId,
+        integrationName_externalId_organizationId: {
+          externalId: slackUserId,
+          integrationName: INTEGRATION_NAMES.SLACK,
+          organizationId: organization.id,
+        },
       },
       include: {
-        teamMemberships: {
+        user: {
           include: {
-            team: {
+            teamMemberships: {
               include: {
-                members: {
+                team: {
                   include: {
-                    user: true,
+                    members: {
+                      include: {
+                        user: true,
+                      },
+                    },
                   },
                 },
               },
             },
+            notificationSettings: true,
           },
         },
-        notificationSettings: true,
       },
-    }),
-    prisma.organization.findUnique({
-      where: {
-        slackId: slackOrgId,
-      },
-      include: {
-        teams: {
-          include: {
-            members: {
-              include: {
-                user: true,
-              },
-            },
-          },
-        },
-        integrationConnections: true,
-        integrationInstallations: true,
-      },
-    }),
-  ]);
+    })
+    .then((account) => account?.user);
   const integrations = INTEGRATIONS;
 
-  if (!user || !organization) {
+  if (!user) {
     // Something went wrong, user and org should exist
-    logger.error('User or organization not found', slackUserId, slackOrgId, {
+    logger.error('User not found', slackUserId, slackOrgId, {
       structuredData: true,
     });
-    throw new Error('User or organization not found');
+    throw new Error('User not found');
   }
 
   const isNewUser = user.teamMemberships.length < 1;
   const orgHasIntegrations =
-    organization.integrationConnections.length > 0 ||
-    organization.integrationInstallations.length > 0;
+    organization.integrationAccounts.length > 0 || organization.integrationInstallations.length > 0;
 
   return {
     type: 'home',
@@ -250,7 +265,7 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
 
 const addIntegrationConnectionButton = (
   user: User,
-  organization: OrganizationWithIntegrationConnections,
+  organization: OrganizationWithIntegrationAccounts,
   integration: Integration,
   additionalActions?: Button[]
 ): ActionsBlock => {
@@ -287,13 +302,13 @@ const addIntegrationConnectionButton = (
 
 const integrationBlocks = (
   integration: Integration,
-  organization: OrganizationWithIntegrationConnectionsAndInstallations,
+  organization: OrganizationWithIntegrationAccountsAndInstallations,
   user: User
 ): KnownBlock[] => {
   const integrationInstallation = organization.integrationInstallations.find(
     (ii) => ii.integrationName === integration.value
   );
-  // const integrationConnections = organization.integrationConnections.filter(
+  // const integrationAccounts = organization.integrationAccounts.filter(
   //   (ic: IntegrationProviderAccount) => ic.provider === integration.value
   // );
 
@@ -309,7 +324,7 @@ const integrationBlocks = (
 
   // Github is the only integration for now and it has some custom logic
   // TODO: update this when more integrations are added
-  if (integration.value === 'github') {
+  if (integration.value === INTEGRATION_NAMES.GITHUB) {
     if (integrationInstallation) {
       const installationData = integrationInstallation.data as unknown as GithubInstallation;
       const installationAccountName =
@@ -327,7 +342,7 @@ const integrationBlocks = (
         ],
       });
 
-      // if (integrationConnection.provider === 'github') {
+      // if (integrationConnection.provider === INTEGRATION_NAMES.GITHUB) {
       //   if (!integrationConnection.userId || integrationConnection.userId !== user.id) {
       //     headerBlocks.push({
       //       type: 'section',
@@ -346,7 +361,7 @@ const integrationBlocks = (
       //             emoji: true,
       //           },
       //           action_id: 'show_add_username',
-      //           value: 'github',
+      //           value: INTEGRATION_NAMES.GITHUB,
       //         } as Button,
       //       ])
       //     );
@@ -378,7 +393,7 @@ const integrationBlocks = (
 
 const integrationsSection = (
   user: User,
-  organization: OrganizationWithIntegrationConnectionsAndInstallations,
+  organization: OrganizationWithIntegrationAccountsAndInstallations,
   integrations: Integrations
 ): KnownBlock[] => {
   const detailsSection = flatMap(integrations, (integration: Integration) => {

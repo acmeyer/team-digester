@@ -1,4 +1,5 @@
 import { Config } from '../config';
+import { INTEGRATION_NAMES } from './constants';
 
 export interface Integrations {
   [key: string]: Integration;
@@ -25,7 +26,7 @@ export class Integration {
 export const INTEGRATIONS: Integrations = {
   github: new Integration(
     'GitHub',
-    'github',
+    INTEGRATION_NAMES.GITHUB,
     "Connect your GitHub account to stay updated on all of your team's activity on your codebase.",
     `https://github.com/apps/${Config.GITHUB_APP_SLUG}/installations/new`
   ),

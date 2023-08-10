@@ -1,14 +1,18 @@
 import { Installation, InstallationQuery, Option } from '@slack/bolt';
 import { app } from './index';
 import * as logger from 'firebase-functions/logger';
-import { User, Prisma } from '@prisma/client';
+import { User, Prisma, IntegrationInstallation, Organization } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { Config } from '../config';
+import { INTEGRATION_NAMES } from '../lib/constants';
 
 const getInstallationFromDatabase = async (id: string) => {
-  return await prisma.slackInstallation.findUnique({
+  return await prisma.integrationInstallation.findUnique({
     where: {
-      slackId: id,
+      integrationName_externalId: {
+        integrationName: INTEGRATION_NAMES.SLACK,
+        externalId: id,
+      },
     },
   });
 };
@@ -34,39 +38,46 @@ export const saveInstallation = async (installation: Installation): Promise<void
 
     if (!slackInstall) {
       // New installation, add to database and create organization
-      await prisma.slackInstallation.create({
+      const integrationInstallation = await prisma.integrationInstallation.create({
         data: {
-          slackId: slackId,
-          token: authToken || Config.SLACK_BOT_TOKEN,
-          isEnterpriseInstall: isEnterpriseInstall,
-          installation: installation as unknown as Prisma.JsonObject,
-          organization: {
-            create: {
-              slackId: slackId,
-              name: installation.enterprise?.name || installation.team?.name || '',
-              isSlackEnterprise: isEnterpriseInstall,
-            },
-          },
+          integrationName: INTEGRATION_NAMES.SLACK,
+          externalId: slackId,
+          accessToken: authToken || Config.SLACK_BOT_TOKEN,
+          data: installation as unknown as Prisma.JsonObject,
         },
       });
 
-      await findOrCreateUser(installation.user.id, slackId);
+      // Create or connect organization and user
+      const org = await findOrCreateOrganizationFromSlack(
+        integrationInstallation,
+        installation,
+        slackId
+      );
+      await findOrCreateUserFromSlack(installation.user.id, org);
       return;
     } else {
       logger.info('Installation already exists, updating...', installation, {
         structuredData: true,
       });
-      await prisma.slackInstallation.update({
+      const integrationInstallation = await prisma.integrationInstallation.update({
         where: {
-          slackId: slackId,
+          integrationName_externalId: {
+            integrationName: INTEGRATION_NAMES.SLACK,
+            externalId: slackId,
+          },
         },
         data: {
-          token: authToken || Config.SLACK_BOT_TOKEN,
-          installation: slackInstall.installation as Prisma.JsonObject,
+          accessToken: authToken || Config.SLACK_BOT_TOKEN,
+          data: slackInstall.data as Prisma.JsonObject,
         },
       });
-
-      await findOrCreateUser(installation.user.id, slackId);
+      // Create or connect organization and user
+      const org = await findOrCreateOrganizationFromSlack(
+        integrationInstallation,
+        installation,
+        slackId
+      );
+      await findOrCreateUserFromSlack(installation.user.id, org);
       return;
     }
   }
@@ -90,10 +101,7 @@ export const getInstallation = async (
   }
 
   // Not sure about this
-  const installationData = installation.installation as unknown as Installation<
-    'v1' | 'v2',
-    boolean
-  >;
+  const installationData = installation.data as unknown as Installation<'v1' | 'v2', boolean>;
   return installationData;
 };
 
@@ -110,41 +118,138 @@ export const deleteInstallation = async (
   } else {
     throw new Error('Failed deleting installation');
   }
-  await prisma.slackInstallation.delete({
+  await prisma.integrationInstallation.delete({
     where: {
-      slackId: installationId,
+      integrationName_externalId: {
+        integrationName: INTEGRATION_NAMES.SLACK,
+        externalId: installationId,
+      },
     },
   });
 };
 
-export const findOrCreateUser = async (slackId: string, slackOrgId: string): Promise<User> => {
-  logger.info('findOrCreateUser', slackId, slackOrgId, { structuredData: true });
-
-  const user = await prisma.user.findUnique({
-    where: {
-      slackId: slackId,
-    },
+const findOrCreateOrganizationFromSlack = async (
+  integrationInstallation: IntegrationInstallation,
+  slackInstallation: Installation<'v1' | 'v2', boolean>,
+  slackOrgId: string
+): Promise<Organization> => {
+  logger.info('findOrCreateOrganizationFromSlack', integrationInstallation, slackOrgId, {
+    structuredData: true,
   });
 
-  if (user) {
-    return user;
-  }
-
-  const slackInstallation = await prisma.slackInstallation.findUnique({
+  const organization = await prisma.organization.findUnique({
     where: {
       slackId: slackOrgId,
     },
   });
 
+  if (organization) {
+    return organization;
+  }
+
+  const newOrganization = await prisma.organization.create({
+    data: {
+      slackId: slackOrgId,
+      name: slackInstallation.enterprise?.name || slackInstallation.team?.name,
+      isSlackEnterprise: slackInstallation.isEnterpriseInstall,
+    },
+  });
+
+  // If it's a new organization, connect IntegrationInstallation to it
+  await prisma.integrationInstallation.update({
+    where: {
+      id: integrationInstallation.id,
+    },
+    data: {
+      organization: {
+        connect: {
+          id: newOrganization.id,
+        },
+      },
+    },
+  });
+
+  return newOrganization;
+};
+
+export const findOrCreateUserFromSlack = async (
+  slackId: string,
+  organization: Organization
+): Promise<User> => {
+  logger.info('findOrCreateUserFromSlack', slackId, { structuredData: true });
+
+  // Try to find an integration account for the user
+  const integrationAccount = await prisma.integrationAccount.findUnique({
+    where: {
+      integrationName_externalId_organizationId: {
+        externalId: slackId,
+        integrationName: INTEGRATION_NAMES.SLACK,
+        organizationId: organization.id,
+      },
+    },
+    include: {
+      user: true,
+    },
+  });
+
+  if (integrationAccount) {
+    return integrationAccount.user;
+  }
+
+  // There's nothing we could find on this Slack user, so create one
+  // Slack Installation must exist for this to work, this is an assumption
+  const slackInstallation = await prisma.integrationInstallation.findUnique({
+    where: {
+      integrationName_externalId: {
+        externalId: organization.slackId,
+        integrationName: INTEGRATION_NAMES.SLACK,
+      },
+    },
+  });
+
+  // Try to find the user by email
   const slackUserData = await app.client.users.profile.get({
-    token: slackInstallation?.token,
+    token: slackInstallation?.accessToken as string | undefined,
     user: slackId,
   });
 
-  // Create the user
-  return prisma.user.create({
+  const user = await prisma.user.findFirst({
+    where: {
+      email: slackUserData?.profile?.email,
+    },
+  });
+
+  if (user) {
+    // User exists, create a new integration account and connect to organization
+    await prisma.integrationAccount.create({
+      data: {
+        integrationName: INTEGRATION_NAMES.SLACK,
+        externalId: slackId,
+        username: slackUserData?.profile?.display_name,
+        name: slackUserData?.profile?.real_name,
+        email: slackUserData?.profile?.email,
+        pictureUrl: slackUserData?.profile?.image_512,
+        accessToken: slackInstallation?.accessToken,
+        rawProfileData: slackUserData?.profile as Prisma.JsonObject,
+        rawAuthData: slackUserData as Prisma.JsonObject,
+        organization: {
+          connect: {
+            id: organization.id,
+          },
+        },
+        user: {
+          connect: {
+            id: user.id,
+          },
+        },
+      },
+    });
+    return user;
+  }
+
+  // User doesn't exist, create a new user and connect to organization
+  const newUser = await prisma.user.create({
     data: {
-      slackId: slackId,
       email: slackUserData?.profile?.email,
       pictureUrl: slackUserData?.profile?.image_512,
       firstName: slackUserData?.profile?.first_name,
@@ -152,11 +257,38 @@ export const findOrCreateUser = async (slackId: string, slackOrgId: string): Pro
       name: slackUserData?.profile?.real_name,
       organizations: {
         connect: {
-          slackId: slackOrgId,
+          id: organization.id,
         },
       },
     },
   });
+
+  // Then create a new integration account and connect to user and organization
+  await prisma.integrationAccount.create({
+    data: {
+      integrationName: INTEGRATION_NAMES.SLACK,
+      externalId: slackId,
+      username: slackUserData?.profile?.display_name,
+      name: slackUserData?.profile?.real_name,
+      email: slackUserData?.profile?.email,
+      pictureUrl: slackUserData?.profile?.image_512,
+      accessToken: slackInstallation?.accessToken,
+      rawProfileData: slackUserData?.profile as Prisma.JsonObject,
+      rawAuthData: slackUserData as Prisma.JsonObject,
+      organization: {
+        connect: {
+          id: organization.id,
+        },
+      },
+      user: {
+        connect: {
+          id: newUser.id,
+        },
+      },
+    },
+  });
+
+  return newUser;
 };
 
 export const NOTIFICATION_TIMING_OPTIONS = {

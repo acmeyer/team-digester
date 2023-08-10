@@ -9,6 +9,7 @@ import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
 import { Prisma } from '@prisma/client';
 import { createAppAuth } from '@octokit/auth-app';
 import fs from 'fs';
+import { INTEGRATION_NAMES } from '../lib/constants';
 
 const githubWebhooks = new Webhooks({
   secret: Config.GITHUB_WEBHOOK_SECRET,
@@ -75,12 +76,12 @@ router.get('/github/callback', async (req, res) => {
   const profileResultData = await profileResult.json();
 
   try {
-    await prisma.integrationProviderAccount.upsert({
+    await prisma.integrationAccount.upsert({
       where: {
-        provider_userId_organizationId: {
+        integrationName_userId_organizationId: {
           userId: user.id,
           organizationId: organization.id,
-          provider: 'github',
+          integrationName: INTEGRATION_NAMES.GITHUB,
         },
       },
       update: {
@@ -95,8 +96,8 @@ router.get('/github/callback', async (req, res) => {
         scope: authData.scope,
       },
       create: {
-        provider: 'github',
-        uid: profileResultData.id.toString(),
+        integrationName: INTEGRATION_NAMES.GITHUB,
+        externalId: profileResultData.id.toString(),
         username: profileResultData.login,
         name: profileResultData.name,
         pictureUrl: profileResultData.avatar_url,
@@ -119,6 +120,17 @@ router.get('/github/callback', async (req, res) => {
       message: 'Failed to create integration provider account',
     });
   }
+});
+
+router.get('/github/installation/setup', async (req, res) => {
+  // This is a test to see what I can do with it
+  console.log('github installation setup', {
+    req,
+  });
+
+  return res.status(200).send({
+    message: 'Ok',
+  });
 });
 
 router.post('/github/webhooks', async (req, res) => {
@@ -149,23 +161,7 @@ githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
 
   console.log('installation account', payload.installation.account);
 
-  const { installation, sender } = payload;
-
-  // Use sender to find integration provider account, should already exist
-  const integrationProviderAccount = await prisma.integrationProviderAccount.findFirst({
-    where: {
-      provider: 'github',
-      uid: sender.id.toString(),
-    },
-    include: {
-      user: true,
-    },
-  });
-
-  if (!integrationProviderAccount) {
-    console.error('Integration provider account not found');
-    throw new Error('Integration provider account not found');
-  }
+  const { installation } = payload;
 
   // get a token for later usage
   const privateKey = fs.readFileSync(Config.GITHUB_PRIVATE_KEY_PATH, 'utf-8');
@@ -178,14 +174,24 @@ githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
   // Use installation to create a new integration installation
   await prisma.integrationInstallation.create({
     data: {
-      integrationName: 'github',
+      integrationName: INTEGRATION_NAMES.GITHUB,
       externalId: installation.id.toString(),
       data: installation as unknown as Prisma.JsonObject,
-      installedById: integrationProviderAccount.id,
-      organizationId: integrationProviderAccount.organizationId,
       accessToken: installationAuth.token,
     },
   });
+
+  // Try to link user and organization here
+  // Use sender to find integration provider account
+  // const integrationProviderAccount = await prisma.integrationProviderAccount.findFirst({
+  //   where: {
+  //     provider: INTEGRATION_NAMES.GITHUB,
+  //     uid: sender.id.toString(),
+  //   },
+  //   include: {
+  //     user: true,
+  //   },
+  // });
 });
 
 githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
@@ -195,7 +201,10 @@ githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
   // Remove the integration installation from the database
   await prisma.integrationInstallation.delete({
     where: {
-      externalId: installation.id.toString(),
+      integrationName_externalId: {
+        externalId: installation.id.toString(),
+        integrationName: INTEGRATION_NAMES.GITHUB,
+      },
     },
   });
 });
