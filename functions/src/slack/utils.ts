@@ -132,6 +132,8 @@ export const deleteInstallation = async (
       },
     },
   });
+
+  // Future question? Should we remove all associated IntegrationAccounts too?
 };
 
 const findOrCreateOrganizationFromSlack = async (

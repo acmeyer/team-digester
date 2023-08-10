@@ -286,6 +286,8 @@ githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
       },
     },
   });
+
+  // Future question? Should we remove all associated IntegrationAccounts too?
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request
