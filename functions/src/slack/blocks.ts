@@ -1,18 +1,13 @@
 /* eslint-disable max-len */
-import { KnownBlock, HomeView, Button, Option, ActionsBlock } from '@slack/bolt';
+import { KnownBlock, HomeView, Button, Option, ActionsBlock, StaticSelect } from '@slack/bolt';
 import * as logger from 'firebase-functions/logger';
-import {
-  // IntegrationAccount,
-  User,
-  NotificationType,
-  NotificationSetting,
-} from '@prisma/client';
+import { User, NotificationType, NotificationSetting, IntegrationAccount } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import * as crypto from 'crypto';
 import { flatMap, startCase, sortBy, indexOf } from 'lodash';
 import {
-  GithubOauthStateStore,
+  OauthStateStore,
   OrganizationWithIntegrationAccounts,
   OrganizationWithIntegrationAccountsAndInstallations,
   UserWithTeams,
@@ -22,6 +17,8 @@ import {
 import { NOTIFICATION_TIMING_OPTIONS } from './utils';
 import { INTEGRATIONS, Integrations, Integration } from '../lib/integrations';
 import { INTEGRATION_NAMES } from '../lib/constants';
+import { Installation as GithubIntegrationInstallationData } from '@octokit/webhooks-types';
+import { Octokit } from '@octokit/core';
 
 export const createAppHomeView = async (
   slackUserId: string,
@@ -106,13 +103,13 @@ export const createAppHomeView = async (
       ...(isNewUser ? newUserSection(user) : returningUserSection(user)),
       ...(!orgHasIntegrations
         ? [
-            ...integrationsSection(user, organization, integrations),
+            ...(await integrationsSection(user, organization, integrations)),
             ...teamsSection(user, organization),
             ...settingsSection(user),
           ]
         : [
             ...teamsSection(user, organization),
-            ...integrationsSection(user, organization, integrations),
+            ...(await integrationsSection(user, organization, integrations)),
             ...settingsSection(user),
           ]),
     ],
@@ -262,21 +259,30 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
   return blocks;
 };
 
-const addIntegrationConnectionButton = (
-  user: User,
-  organization: OrganizationWithIntegrationAccounts,
-  integration: Integration,
-  additionalActions?: Button[]
-): ActionsBlock => {
+const addIntegrationConnectionButton = ({
+  user,
+  organization,
+  integration,
+  additionalActions,
+  isInstallation,
+}: {
+  user: User;
+  organization: OrganizationWithIntegrationAccounts;
+  integration: Integration;
+  additionalActions?: (Button | StaticSelect)[];
+  isInstallation?: boolean;
+}): ActionsBlock => {
   const state = crypto.randomBytes(16).toString('hex');
-  const stateData: GithubOauthStateStore = {
+  const stateData: OauthStateStore = {
     organizationId: organization.id,
     userId: user.id,
   };
   redis.set(`oauth:state:${state}`, JSON.stringify(stateData));
-  const connectionUrl = integration.getFullConnectionUrl(state);
+  const connectionUrl = isInstallation
+    ? integration.getInstallationUrl(state)
+    : integration.getAuthorizationUrl(state);
 
-  const actions = [
+  const actions: (Button | StaticSelect)[] = [
     {
       type: 'button',
       text: {
@@ -299,19 +305,19 @@ const addIntegrationConnectionButton = (
   };
 };
 
-const integrationBlocks = (
+const integrationBlocks = async (
   integration: Integration,
   organization: OrganizationWithIntegrationAccountsAndInstallations,
   user: User
-): KnownBlock[] => {
+): Promise<KnownBlock[]> => {
   const integrationInstallation = organization.integrationInstallations.find(
     (ii) => ii.integrationName === integration.value
   );
-  // const integrationAccounts = organization.integrationAccounts.filter(
-  //   (ic: IntegrationProviderAccount) => ic.provider === integration.value
-  // );
+  const integrationAccounts = organization.integrationAccounts.filter(
+    (ic: IntegrationAccount) => ic.integrationName === integration.value
+  );
 
-  const headerBlocks = [
+  const integrationBlocks = [
     {
       type: 'section',
       text: {
@@ -324,8 +330,13 @@ const integrationBlocks = (
   // Github is the only integration for now and it has some custom logic
   // TODO: update this when more integrations are added
   if (integration.value === INTEGRATION_NAMES.GITHUB) {
+    // Get users integration account for given integration and organization
+    const integrationAccount = integrationAccounts.find(
+      (ia) => ia.organizationId === organization.id && ia.userId === user.id
+    );
+
     if (integrationInstallation) {
-      headerBlocks.push({
+      integrationBlocks.push({
         type: 'context',
         elements: [
           {
@@ -335,43 +346,70 @@ const integrationBlocks = (
         ],
       });
 
-      // if (integrationConnection.provider === INTEGRATION_NAMES.GITHUB) {
-      //   if (!integrationConnection.userId || integrationConnection.userId !== user.id) {
-      //     headerBlocks.push({
-      //       type: 'section',
-      //       text: {
-      //         type: 'mrkdwn',
-      //         text: "You have not connected your GitHub account yet. In order to share your actvity with your team, you'll need to tell us your account information. You can do this by either connecting your account directly or entering your GitHub username.",
-      //       },
-      //     });
-      //     headerBlocks.push(
-      //       addIntegrationConnectionButton(user, organization, integration, [
-      //         {
-      //           type: 'button',
-      //           text: {
-      //             type: 'plain_text',
-      //             text: 'Add Username',
-      //             emoji: true,
-      //           },
-      //           action_id: 'show_add_username',
-      //           value: INTEGRATION_NAMES.GITHUB,
-      //         } as Button,
-      //       ])
-      //     );
-      //   } else {
-      //     headerBlocks.push({
-      //       type: 'section',
-      //       text: {
-      //         type: 'mrkdwn',
-      //         text: `You're connected as *@${integrationConnection.username}*`,
-      //       },
-      //     });
-      //   }
-      // }
+      if (!integrationAccount) {
+        integrationBlocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `You have not connected your GitHub account yet. In order to share your actvity with your team, you'll need to tell us who you are on ${integration.label}. You can do this by either connecting your account directly or selecting your ${integration.label} account below.`,
+          },
+        });
 
-      return headerBlocks;
+        let membersSelect: StaticSelect | undefined;
+        if (
+          (integrationInstallation.data as unknown as GithubIntegrationInstallationData)
+            .target_type === 'Organization'
+        ) {
+          // Get the members of organization and use those as options in the dropdown
+          const octokit = new Octokit({ auth: integrationInstallation.accessToken });
+          const { data: orgMembers } = await octokit.request('GET /orgs/{org}/members', {
+            org: (integrationInstallation.data as unknown as GithubIntegrationInstallationData)
+              .account.login,
+          });
+
+          const membersOptions = orgMembers.map((member) => ({
+            text: {
+              type: 'plain_text',
+              text: member.login,
+              emoji: true,
+            },
+            value: member.login,
+          }));
+
+          membersSelect = {
+            type: 'static_select',
+            placeholder: {
+              type: 'plain_text',
+              text: 'Select your username',
+              emoji: true,
+            },
+            options: membersOptions,
+            action_id: 'github_username_select',
+          } as StaticSelect;
+        }
+
+        integrationBlocks.push(
+          addIntegrationConnectionButton({
+            user,
+            organization,
+            integration,
+            additionalActions: membersSelect ? [membersSelect] : undefined,
+            isInstallation: false, // Just using OAuth for this connection, since install is already done
+          })
+        );
+      } else {
+        integrationBlocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `You're connected as *@${integrationAccount.username}*`,
+          },
+        });
+      }
+
+      return integrationBlocks;
     } else {
-      headerBlocks.push({
+      integrationBlocks.push({
         type: 'section',
         text: {
           type: 'mrkdwn',
@@ -379,19 +417,30 @@ const integrationBlocks = (
         },
       });
     }
+
+    // If the integration is not installed, then we need to show the connect button
+    return [
+      ...integrationBlocks,
+      addIntegrationConnectionButton({ user, organization, integration, isInstallation: true }),
+    ];
   }
 
-  return [...headerBlocks, addIntegrationConnectionButton(user, organization, integration)];
+  return [
+    ...integrationBlocks,
+    addIntegrationConnectionButton({ user, organization, integration, isInstallation: false }),
+  ];
 };
 
-const integrationsSection = (
+const integrationsSection = async (
   user: User,
   organization: OrganizationWithIntegrationAccountsAndInstallations,
   integrations: Integrations
-): KnownBlock[] => {
-  const detailsSection = flatMap(integrations, (integration: Integration) => {
-    return integrationBlocks(integration, organization, user);
-  });
+): Promise<KnownBlock[]> => {
+  const [detailsSection] = await Promise.all(
+    flatMap(integrations, (integration: Integration) => {
+      return integrationBlocks(integration, organization, user);
+    })
+  );
 
   return [
     {

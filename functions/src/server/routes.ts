@@ -3,7 +3,7 @@ const router = express.Router();
 import * as logger from 'firebase-functions/logger';
 import { redis } from '../lib/redis';
 import { prisma } from '../lib/prisma';
-import { GithubOauthStateStore } from '../types';
+import { OauthStateStore } from '../types';
 import { Config } from '../config';
 import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
 import { Prisma } from '@prisma/client';
@@ -38,11 +38,11 @@ router.get('/github/installation/setup', async (req, res) => {
       logger.error('Missing installation id', { structuredData: true });
       return res.status(400).send('Missing installation id');
     }
-    const stateData = (await redis.get(`oauth:state:${state}`)) as GithubOauthStateStore;
+    const stateData = (await redis.get(`oauth:state:${state}`)) as OauthStateStore;
     const { organizationId, userId } = stateData;
     await redis.set(
       `oauth:state:${state}`,
-      JSON.stringify({ organizationId, userId, githubInstallationId: installationId })
+      JSON.stringify({ organizationId, userId, installationId })
     );
 
     // Add installation id to state and redirect to authorization url
@@ -66,8 +66,8 @@ router.get('/github/callback', async (req, res) => {
     throw new Error('Missing code or state');
   }
 
-  const stateData = (await redis.get(`oauth:state:${state}`)) as GithubOauthStateStore;
-  const { organizationId, userId, githubInstallationId } = stateData;
+  const stateData = (await redis.get(`oauth:state:${state}`)) as OauthStateStore;
+  const { organizationId, userId, installationId } = stateData;
   const [organization, user] = await Promise.all([
     prisma.organization.findUnique({
       where: {
@@ -145,14 +145,14 @@ router.get('/github/callback', async (req, res) => {
       },
     });
 
-    if (githubInstallationId) {
+    if (installationId) {
       // Verify that the installation id is valid and user is associated with it
       const { data: installationsData } = await octokit.request('GET /user/installations');
       const installationData = installationsData.installations.find((installation) => {
-        return installation.id.toString() === githubInstallationId;
+        return installation.id.toString() === installationId;
       });
       if (!installationData) {
-        logger.error('Installation not found', githubInstallationId, userProfileData.id, {
+        logger.error('Installation not found', installationId, userProfileData.id, {
           structuredData: true,
         });
         return res.status(400).send('Invalid request');
@@ -163,7 +163,7 @@ router.get('/github/callback', async (req, res) => {
       const auth = createAppAuth({
         appId: Config.GITHUB_APP_ID,
         privateKey: privateKey,
-        installationId: githubInstallationId,
+        installationId: installationId,
       });
       const installationAuth = await auth({ type: 'installation' });
 
@@ -188,7 +188,7 @@ router.get('/github/callback', async (req, res) => {
         where: {
           integrationName_externalId: {
             integrationName: INTEGRATION_NAMES.GITHUB,
-            externalId: githubInstallationId.toString(),
+            externalId: installationId.toString(),
           },
         },
         update: {
@@ -199,7 +199,7 @@ router.get('/github/callback', async (req, res) => {
         },
         create: {
           integrationName: INTEGRATION_NAMES.GITHUB,
-          externalId: githubInstallationId.toString(),
+          externalId: installationId.toString(),
           accountName: accountName,
           data: installationData as unknown as Prisma.JsonObject,
           accessToken: installationAuth.token,

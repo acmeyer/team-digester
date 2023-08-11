@@ -8,10 +8,10 @@ import {
   IntegrationInstallation,
 } from '@prisma/client';
 
-export interface GithubOauthStateStore {
+export interface OauthStateStore {
   organizationId?: string;
   userId: string;
-  githubInstallationId?: string;
+  installationId?: string;
 }
 
 export interface OrganizationWithIntegrationAccounts extends Organization {
