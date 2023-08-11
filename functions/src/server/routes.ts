@@ -7,10 +7,9 @@ import { OauthStateStore } from '../types';
 import { Config } from '../config';
 import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
 import { Prisma } from '@prisma/client';
-import { createAppAuth } from '@octokit/auth-app';
 import { Octokit } from '@octokit/core';
-import fs from 'fs';
 import { INTEGRATION_NAMES } from '../lib/constants';
+import { getInstallationAuth } from '../lib/github';
 
 const githubWebhooks = new Webhooks({
   secret: Config.GITHUB_WEBHOOK_SECRET,
@@ -159,13 +158,7 @@ router.get('/github/callback', async (req, res) => {
       }
 
       // Set up the installation
-      const privateKey = fs.readFileSync(Config.GITHUB_PRIVATE_KEY_PATH, 'utf-8');
-      const auth = createAppAuth({
-        appId: Config.GITHUB_APP_ID,
-        privateKey: privateKey,
-        installationId: installationId,
-      });
-      const installationAuth = await auth({ type: 'installation' });
+      const installationAuth = await getInstallationAuth(installationId);
 
       // Get account name
       let accountName = '';
@@ -246,13 +239,7 @@ githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
   const { installation } = payload;
 
   // get a token for later usage
-  const privateKey = fs.readFileSync(Config.GITHUB_PRIVATE_KEY_PATH, 'utf-8');
-  const auth = createAppAuth({
-    appId: Config.GITHUB_APP_ID,
-    privateKey: privateKey,
-    installationId: installation.id,
-  });
-  const installationAuth = await auth({ type: 'installation' });
+  const installationAuth = await getInstallationAuth(installation.id.toString());
   // Use installation to create a new integration installation if necessary,
   // this is a placeholder until it's completed after the OAuth flow
   await prisma.integrationInstallation.upsert({

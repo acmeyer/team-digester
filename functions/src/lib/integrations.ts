@@ -63,7 +63,7 @@ export const INTEGRATIONS: Integrations = {
     label: 'GitHub',
     value: INTEGRATION_NAMES.GITHUB,
     description:
-      "Connect your GitHub account to stay updated on all of your team's activity on your codebase.",
+      "Install the GitHub integration to stay updated on all of your team's activity on your codebase.",
     installationUrl: `https://github.com/apps/${Config.GITHUB_APP_SLUG}/installations/new`,
     authorizationUrl: 'https://github.com/login/oauth/authorize',
     clientId: Config.GITHUB_CLIENT_ID,

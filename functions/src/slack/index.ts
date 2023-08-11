@@ -16,14 +16,10 @@ import {
   joinTeamHandler,
   leaveTeamHandler,
   notificationFrequencyHandler,
-  showAddUsernameHandler,
   notificationTimingHandler,
+  githubUsernameSelectHandler,
 } from './actionHandlers';
-import {
-  createTeamModalHandler,
-  editTeamModalHandler,
-  addUsernameModalHandler,
-} from './viewHandlers';
+import { createTeamModalHandler, editTeamModalHandler } from './viewHandlers';
 import { slackErrorHandler } from './errors';
 import { saveInstallation, getInstallation, deleteInstallation } from './utils';
 
@@ -71,16 +67,15 @@ app.action('connect_integration', connectIntegrationHandler);
 app.action('show_create_team', showCreateTeamHandler);
 app.action('show_edit_team', showEditTeamHandler);
 app.action('show_join_team', showJoinTeamHandler);
-app.action('show_add_username', showAddUsernameHandler);
 app.action('join_team', joinTeamHandler);
 app.action('leave_team', leaveTeamHandler);
 app.action('team_members_select', selectTeamMembersHandler);
 app.action('notification_frequency', notificationFrequencyHandler);
 app.action('notification_timing', notificationTimingHandler);
+app.action('github_username_select', githubUsernameSelectHandler);
 // View listeners
 app.view('create_team_modal', createTeamModalHandler);
 app.view('edit_team_modal', editTeamModalHandler);
-app.view('add_username_modal', addUsernameModalHandler);
 // Error handler
 app.error(slackErrorHandler);
 

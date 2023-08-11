@@ -8,49 +8,22 @@ import {
   BlockAction,
   ButtonAction,
   View,
-  Option,
 } from '@slack/bolt';
 import { KnownBlock, ModalView, WebClient } from '@slack/web-api';
 import * as logger from 'firebase-functions/logger';
-import { NotificationType } from '@prisma/client';
+import { NotificationType, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { refreshHomeView } from './viewHandlers';
-import { startCase } from 'lodash';
 import { findUserFromSlackId } from '../lib/utils';
 import { INTEGRATION_NAMES } from '../lib/constants';
-
-type NotificationSettingsState = {
-  values: {
-    notification_frequency: {
-      notification_frequency: { type: string; selected_options: Option[] };
-    };
-    daily_timeOfDay?: {
-      notification_timing: { type: string; selected_option: Option };
-    };
-    weekly_timeOfDay?: {
-      notification_timing: { type: string; selected_option: Option };
-    };
-    weekly_dayOfWeek?: {
-      notification_timing: { type: string; selected_option: Option };
-    };
-    monthly_timeOfDay?: {
-      notification_timing: { type: string; selected_option: Option };
-    };
-    monthly_dayOfMonth?: {
-      notification_timing: { type: string; selected_option: Option };
-    };
-  };
-};
-
-type Timing = {
-  notification_timing: { type: string; selected_option: Option };
-};
-
-type GroupedOptions = {
-  daily: Array<{ timeOfDay?: string; dayOfWeek?: string }>;
-  weekly: Array<{ timeOfDay?: string; dayOfWeek?: string }>;
-  monthly: Array<{ timeOfDay?: string; dayOfMonth?: string }>;
-};
+import { githubApiRequestWithRetry } from '../lib/github';
+import { User as GithubAccount } from '@octokit/webhooks-types';
+import {
+  NotificationSettingsState,
+  Timing,
+  GroupedOptions,
+  GitHubUsernameSelectState,
+} from '../types';
 
 const defaultTimingForNotificationType = {
   [NotificationType.daily]: '8am',
@@ -658,7 +631,7 @@ export const notificationTimingHandler = async ({
   await refreshHomeView(client, slackUserId, slackOrgId);
 };
 
-export const showAddUsernameHandler = async ({
+export const githubUsernameSelectHandler = async ({
   ack,
   body,
   context,
@@ -670,6 +643,14 @@ export const showAddUsernameHandler = async ({
   client: WebClient;
 }) => {
   ack();
+  logger.info('githubUsernameSelectHandler called', context, { structuredData: true });
+
+  const { view } = body as BlockAction<ButtonAction>;
+  if (!view) {
+    return;
+  }
+  const { values } = view.state as unknown as GitHubUsernameSelectState;
+  const selectedUsername = values.connect_github.github_username_select.selected_option.value;
 
   const { userId: slackUserId, teamId: slackOrgId } = context;
 
@@ -681,6 +662,13 @@ export const showAddUsernameHandler = async ({
     where: {
       slackId: slackOrgId,
     },
+    include: {
+      integrationInstallations: {
+        where: {
+          integrationName: INTEGRATION_NAMES.GITHUB,
+        },
+      },
+    },
   });
   if (!organization) {
     throw new Error('Organization not found');
@@ -690,44 +678,70 @@ export const showAddUsernameHandler = async ({
     throw new Error('User not found');
   }
 
-  const { trigger_id: triggerId, actions } = body as BlockAction<ButtonAction>;
-  const provider = actions[0].value;
+  // Get the user's GitHub information
 
-  client.views.open({
-    token: context.botToken,
-    trigger_id: triggerId,
-    view: {
-      type: 'modal',
-      callback_id: 'add_username_modal',
-      private_metadata: JSON.stringify({
-        provider,
-      }),
-      title: {
-        type: 'plain_text',
-        text: `Add ${startCase(provider)} Username`,
-      },
-      submit: {
-        type: 'plain_text',
-        text: 'Submit',
-      },
-      blocks: [
-        {
-          type: 'input',
-          block_id: `${provider}`,
-          element: {
-            type: 'plain_text_input',
-            action_id: 'username',
-            placeholder: {
-              type: 'plain_text',
-              text: 'Enter your username',
-            },
-          },
-          label: {
-            type: 'plain_text',
-            text: `${startCase(provider)} Username`,
-          },
-        },
-      ],
+  // Try to find a GitHub user with the selected username
+  const integrationAccount = await prisma.integrationAccount.findFirst({
+    where: {
+      integrationName: INTEGRATION_NAMES.GITHUB,
+      username: selectedUsername,
+      organizationId: organization.id,
     },
   });
+
+  if (integrationAccount) {
+    // Ensure that either no user is connected to this GitHub account,
+    // or that the user is the same as the one trying to connect
+    if (integrationAccount.userId !== user.id) {
+      // Show an error message
+      await client.chat.postMessage({
+        channel: slackUserId,
+        text: `The GitHub account ${selectedUsername} is already connected to another user.`,
+      });
+      return;
+    }
+  }
+
+  // No existing account found, so create one
+  const githubInstallation = organization.integrationInstallations.find(
+    (installation) => installation.integrationName === INTEGRATION_NAMES.GITHUB
+  );
+  if (!githubInstallation) {
+    throw new Error('GitHub installation not found');
+  }
+  // Get the user's GitHub information
+  const { data: githubUser }: { data: GithubAccount } = await githubApiRequestWithRetry(
+    githubInstallation,
+    'GET /users/{username}',
+    {
+      username: selectedUsername,
+    }
+  );
+
+  // Save the GitHub account
+  await prisma.integrationAccount.upsert({
+    where: {
+      integrationName_userId_organizationId: {
+        integrationName: INTEGRATION_NAMES.GITHUB,
+        userId: user.id,
+        organizationId: organization.id,
+      },
+    },
+    update: {
+      username: selectedUsername,
+    },
+    create: {
+      userId: user.id,
+      organizationId: organization.id,
+      integrationName: INTEGRATION_NAMES.GITHUB,
+      username: selectedUsername,
+      rawProfileData: githubUser as unknown as Prisma.JsonObject,
+      name: githubUser.name,
+      email: githubUser.email,
+      externalId: githubUser.id.toString(),
+      pictureUrl: githubUser.avatar_url,
+    },
+  });
+
+  await refreshHomeView(client, slackUserId, slackOrgId);
 };

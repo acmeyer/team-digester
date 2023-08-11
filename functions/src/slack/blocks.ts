@@ -1,5 +1,5 @@
 /* eslint-disable max-len */
-import { KnownBlock, HomeView, Button, Option, ActionsBlock, StaticSelect } from '@slack/bolt';
+import { KnownBlock, HomeView, Button, Option, StaticSelect } from '@slack/bolt';
 import * as logger from 'firebase-functions/logger';
 import { User, NotificationType, NotificationSetting, IntegrationAccount } from '@prisma/client';
 import { prisma } from '../lib/prisma';
@@ -17,8 +17,11 @@ import {
 import { NOTIFICATION_TIMING_OPTIONS } from './utils';
 import { INTEGRATIONS, Integrations, Integration } from '../lib/integrations';
 import { INTEGRATION_NAMES } from '../lib/constants';
-import { Installation as GithubIntegrationInstallationData } from '@octokit/webhooks-types';
-import { Octokit } from '@octokit/core';
+import {
+  Installation as GithubIntegrationInstallationData,
+  User as GithubAccount,
+} from '@octokit/webhooks-types';
+import { githubApiRequestWithRetry } from '../lib/github';
 
 export const createAppHomeView = async (
   slackUserId: string,
@@ -97,21 +100,15 @@ export const createAppHomeView = async (
   const orgHasIntegrations =
     organization.integrationAccounts.length > 0 || organization.integrationInstallations.length > 0;
 
+  const integrationsBlocks = await integrationsSection(user, organization, integrations);
+
   return {
     type: 'home',
     blocks: [
       ...(isNewUser ? newUserSection(user) : returningUserSection(user)),
       ...(!orgHasIntegrations
-        ? [
-            ...(await integrationsSection(user, organization, integrations)),
-            ...teamsSection(user, organization),
-            ...settingsSection(user),
-          ]
-        : [
-            ...teamsSection(user, organization),
-            ...(await integrationsSection(user, organization, integrations)),
-            ...settingsSection(user),
-          ]),
+        ? [...integrationsBlocks, ...teamsSection(user, organization), ...settingsSection(user)]
+        : [...teamsSection(user, organization), ...integrationsBlocks, ...settingsSection(user)]),
     ],
   };
 };
@@ -253,6 +250,7 @@ const teamsSection = (user: UserWithTeams, organization: OrganizationWithTeams):
 
   blocks.push({
     type: 'actions',
+    block_id: 'team_actions',
     elements: footerBlocks,
   });
 
@@ -271,7 +269,7 @@ const addIntegrationConnectionButton = ({
   integration: Integration;
   additionalActions?: (Button | StaticSelect)[];
   isInstallation?: boolean;
-}): ActionsBlock => {
+}): KnownBlock => {
   const state = crypto.randomBytes(16).toString('hex');
   const stateData: OauthStateStore = {
     organizationId: organization.id,
@@ -301,6 +299,7 @@ const addIntegrationConnectionButton = ({
 
   return {
     type: 'actions',
+    block_id: `connect_${integration.value}`,
     elements: actions,
   };
 };
@@ -320,6 +319,7 @@ const integrationBlocks = async (
   const integrationBlocks = [
     {
       type: 'section',
+      block_id: `integration_${integration.value}`,
       text: {
         type: 'mrkdwn',
         text: `*${integration.label}*`,
@@ -361,13 +361,16 @@ const integrationBlocks = async (
             .target_type === 'Organization'
         ) {
           // Get the members of organization and use those as options in the dropdown
-          const octokit = new Octokit({ auth: integrationInstallation.accessToken });
-          const { data: orgMembers } = await octokit.request('GET /orgs/{org}/members', {
-            org: (integrationInstallation.data as unknown as GithubIntegrationInstallationData)
-              .account.login,
-          });
+          const { data: orgMembers } = await githubApiRequestWithRetry(
+            integrationInstallation,
+            'GET /orgs/{org}/members',
+            {
+              org: (integrationInstallation.data as unknown as GithubIntegrationInstallationData)
+                .account.login,
+            }
+          );
 
-          const membersOptions = orgMembers.map((member) => ({
+          const membersOptions = orgMembers.map((member: GithubAccount) => ({
             text: {
               type: 'plain_text',
               text: member.login,
@@ -445,6 +448,7 @@ const integrationsSection = async (
   return [
     {
       type: 'header',
+      block_id: 'integrations_header',
       text: {
         type: 'plain_text',
         text: 'Integrations',

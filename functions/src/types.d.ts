@@ -7,6 +7,7 @@ import {
   NotificationSetting,
   IntegrationInstallation,
 } from '@prisma/client';
+import { Option } from '@slack/bolt';
 
 export interface OauthStateStore {
   organizationId?: string;
@@ -51,3 +52,55 @@ export interface TeamMembershipWithUser extends TeamMembership {
 export interface UserWithNotificationSettings extends User {
   notificationSettings: NotificationSetting[];
 }
+
+export type NotificationSettingsState = {
+  values: {
+    notification_frequency: {
+      notification_frequency: { type: string; selected_options: Option[] };
+    };
+    daily_timeOfDay?: {
+      notification_timing: { type: string; selected_option: Option };
+    };
+    weekly_timeOfDay?: {
+      notification_timing: { type: string; selected_option: Option };
+    };
+    weekly_dayOfWeek?: {
+      notification_timing: { type: string; selected_option: Option };
+    };
+    monthly_timeOfDay?: {
+      notification_timing: { type: string; selected_option: Option };
+    };
+    monthly_dayOfMonth?: {
+      notification_timing: { type: string; selected_option: Option };
+    };
+  };
+};
+
+export type Timing = {
+  notification_timing: { type: string; selected_option: Option };
+};
+
+export type GroupedOptions = {
+  daily: Array<{ timeOfDay?: string; dayOfWeek?: string }>;
+  weekly: Array<{ timeOfDay?: string; dayOfWeek?: string }>;
+  monthly: Array<{ timeOfDay?: string; dayOfMonth?: string }>;
+};
+
+export type GitHubUsernameSelectState = {
+  values: {
+    connect_github: {
+      github_username_select: { type: string; selected_option: Option };
+    };
+  };
+};
+
+export type TeamFormState = {
+  values: {
+    team_name: { team_name: { type: string; value: string } };
+    team_members: {
+      team_members_select: { type: string; selected_users: string[] };
+    };
+  };
+};
+
+export type TeamFormValues = TeamFormState['values'];
