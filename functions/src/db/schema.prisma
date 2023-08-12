@@ -125,3 +125,14 @@ model IntegrationAccount {
   @@unique([integrationName, externalId, organizationId])
   @@unique([integrationName, userId, organizationId])
 }
+
+model IncomingWebhook {
+  id           String    @id @default(dbgenerated("nanoid(14)"))
+  event        String
+  source       String
+  externalId   String
+  data         Json?
+  proceessedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}

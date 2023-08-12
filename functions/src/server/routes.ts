@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import { Octokit } from '@octokit/core';
 import { INTEGRATION_NAMES } from '../lib/constants';
 import { getInstallationAuth } from '../lib/github';
+import { saveIncomingWebhook } from './utils';
 
 const githubWebhooks = new Webhooks({
   secret: Config.GITHUB_WEBHOOK_SECRET,
@@ -277,65 +278,160 @@ githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
   // Future question? Should we remove all associated IntegrationAccounts too?
 });
 
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#push
+githubWebhooks.on('push', async ({ id, name, payload }) => {
+  console.log('push callback', { id, name, payload });
+
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
+
+  // Things worth storing:
+  // - name of the event
+  // - repository name
+  // - repository url
+  // - sender
+  // - installation
+  // - head commit and (commits)
+
+  // Additional things to do when processing the event:
+  // - get the code changes from the commits
+  // - get the files changed from the commits
+});
+
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request
 githubWebhooks.on('pull_request', async ({ id, name, payload }) => {
   console.log('pull_request callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review_comment
 githubWebhooks.on('pull_request_review_comment', async ({ id, name, payload }) => {
   console.log('pull_request_review_comment callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review
 githubWebhooks.on('pull_request_review', async ({ id, name, payload }) => {
   console.log('pull_request_review callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review_thread
 githubWebhooks.on('pull_request_review_thread', async ({ id, name, payload }) => {
   console.log('pull_request_review_thread callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#push
-githubWebhooks.on('push', async ({ id, name, payload }) => {
-  console.log('push callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#release
 githubWebhooks.on('release', async ({ id, name, payload }) => {
   console.log('release callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
-githubWebhooks.on('issue_comment', async ({ id, name, payload }) => {
-  // Created and edited only
-  console.log('issue_comment callback', { id, name, payload });
+githubWebhooks.on('issue_comment.created', async ({ id, name, payload }) => {
+  console.log('issue_comment.created callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
+githubWebhooks.on('issue_comment.edited', async ({ id, name, payload }) => {
+  console.log('issue_comment.edited callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issues
 githubWebhooks.on('issues', async ({ id, name, payload }) => {
   console.log('issues callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#deployment
 githubWebhooks.on('deployment', async ({ id, name, payload }) => {
   console.log('deployment callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#discussion
 githubWebhooks.on('discussion', async ({ id, name, payload }) => {
   console.log('discussion callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#discussion_comment
 githubWebhooks.on('discussion_comment', async ({ id, name, payload }) => {
   console.log('discussion_comment callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#commit_comment
 githubWebhooks.on('commit_comment', async ({ id, name, payload }) => {
   console.log('commit_comment callback', { id, name, payload });
+  await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
 });
 
 export default router;
