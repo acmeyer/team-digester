@@ -45,7 +45,7 @@ export const githubApiRequestWithRetry = async (
     let response = await octokit.request(route, options);
     console.log('octokit response status', response.status);
     if (response.status === 401 && retryCount < 3) {
-      await saveInstallationAuth(
+      integrationInstallation = await saveInstallationAuth(
         integrationInstallation.id,
         (integrationInstallation.data as unknown as GithubIntegrationInstallationData).id.toString()
       );
@@ -62,7 +62,7 @@ export const githubApiRequestWithRetry = async (
     console.log('Error in githubApiRequestWithRetry');
     console.error(error);
     if (error.status === 401 && retryCount < 3) {
-      await saveInstallationAuth(
+      integrationInstallation = await saveInstallationAuth(
         integrationInstallation.id,
         (integrationInstallation.data as unknown as GithubIntegrationInstallationData).id.toString()
       );
