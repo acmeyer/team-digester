@@ -84,10 +84,10 @@ URL: ${commit.url}
 Message: ${commit.commit.message}
 ${
   commit.stats
-    ? `\nStats: ${commit.stats.additions} additions and ${commit.stats.deletions} deletions`
+    ? `Stats: ${commit.stats.additions} additions and ${commit.stats.deletions} deletions`
     : ''
 }
-${commit.files ? `\nChanges: ${getFilesChangesMessage(commit.files)}` : ''}`;
+${commit.files ? `Changes: ${getFilesChangesMessage(commit.files)}` : ''}`;
 };
 
 export const getFilesChangesMessage = (files: components['schemas']['commit']['files']) => {
@@ -95,6 +95,6 @@ export const getFilesChangesMessage = (files: components['schemas']['commit']['f
     return `
 Filename: ${file.filename}
 Stats: ${file.changes} changes, ${file.additions} additions and ${file.deletions} deletions
-Code changes: ${file.patch}`;
+Code changes: "${file.patch}"`;
   });
 };
