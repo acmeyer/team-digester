@@ -142,7 +142,6 @@ model IncomingWebhook {
   updatedAt    DateTime  @updatedAt
 }
 
-// IN PROGRESS
 model Activity {
   id              String   @id @default(dbgenerated("nanoid(14)"))
   activityMessage String

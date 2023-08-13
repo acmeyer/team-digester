@@ -84,10 +84,10 @@ URL: ${commit.url}
 Message: ${commit.commit.message}
 ${
   commit.stats
-    ? `Stats: ${commit.stats.additions} additions and ${commit.stats.deletions} deletions`
+    ? `\nStats: ${commit.stats.additions} additions and ${commit.stats.deletions} deletions`
     : ''
 }
-${commit.files ? `Changes: ${getFilesChangesMessage(commit.files)}` : ''}`;
+${commit.files ? `\nChanges: ${getFilesChangesMessage(commit.files)}` : ''}`;
 };
 
 export const getFilesChangesMessage = (files: components['schemas']['commit']['files']) => {
