@@ -9,7 +9,7 @@ import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
 import { Prisma } from '@prisma/client';
 import { Octokit } from '@octokit/core';
 import { INTEGRATION_NAMES } from '../lib/constants';
-import { getInstallationAuth } from '../lib/github';
+import { getInstallationAuth, githubApiRequestWithRetry } from '../lib/github';
 import { saveIncomingWebhook } from './utils';
 
 const githubWebhooks = new Webhooks({
@@ -282,24 +282,117 @@ githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
 githubWebhooks.on('push', async ({ id, name, payload }) => {
   console.log('push callback', { id, name, payload });
 
-  await saveIncomingWebhook({
+  const webhook = await saveIncomingWebhook({
     id,
     event: name,
     source: INTEGRATION_NAMES.GITHUB,
     payload,
   });
 
-  // Things worth storing:
-  // - name of the event
-  // - repository name
-  // - repository url
-  // - sender
-  // - installation
-  // - head commit and (commits)
+  const { commits, repository, sender, installation } = payload;
+
+  if (!installation) {
+    logger.error('No installation found in push event', webhook.id, { structuredData: true });
+    await prisma.incomingWebhook.update({
+      where: {
+        id: webhook.id,
+      },
+      data: {
+        failed: true,
+        failedReason: 'No installation found in push event',
+      },
+    });
+
+    return;
+  }
+
+  // Get the installation and organization
+  const integrationInstallation = await prisma.integrationInstallation.findUnique({
+    where: {
+      integrationName_externalId: {
+        integrationName: INTEGRATION_NAMES.GITHUB,
+        externalId: installation.id.toString(),
+      },
+    },
+    include: {
+      organization: true,
+    },
+  });
+
+  if (!integrationInstallation || !integrationInstallation.organization) {
+    logger.error('No integration installation or organization found for push event', webhook.id, {
+      structuredData: true,
+    });
+    await prisma.incomingWebhook.update({
+      where: {
+        id: webhook.id,
+      },
+      data: {
+        failed: true,
+        failedReason: 'No integration installation or organization found for push event',
+      },
+    });
+    return;
+  }
+
+  // Get the user and integration account
+  const integrationAccount = await prisma.integrationAccount.findUnique({
+    where: {
+      integrationName_externalId_organizationId: {
+        integrationName: INTEGRATION_NAMES.GITHUB,
+        externalId: sender.id.toString(),
+        organizationId: integrationInstallation.organization.id,
+      },
+    },
+    include: {
+      user: true,
+    },
+  });
 
   // Additional things to do when processing the event:
-  // - get the code changes from the commits
-  // - get the files changed from the commits
+  // - get the details of the commit
+  // https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#get-a-commit
+
+  const commitDetails = await Promise.all(
+    commits.map(async (commit) => {
+      return githubApiRequestWithRetry(
+        integrationInstallation,
+        'GET /repos/{owner}/{repo}/commits/{ref}',
+        {
+          owner: repository.owner.login,
+          repo: repository.name,
+          ref: commit.url.split('/').pop(),
+        }
+      );
+    })
+  );
+
+  // Store the activity
+  await prisma.activity.create({
+    data: {
+      organizationId: integrationInstallation.organizationId as string,
+      userId: integrationAccount?.userId as string,
+      activityMessage: '',
+      activityDate: new Date(),
+      activityData: {
+        event: name,
+        commits,
+        commitDetails,
+        repository,
+        sender,
+      } as unknown as Prisma.JsonObject,
+    },
+  });
+
+  // Save the webhook
+  await prisma.incomingWebhook.update({
+    where: {
+      id: webhook.id,
+    },
+    data: {
+      proceessedAt: new Date(),
+    },
+  });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request

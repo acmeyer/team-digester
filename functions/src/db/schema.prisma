@@ -28,6 +28,7 @@ model User {
   teamMemberships      TeamMembership[]      @relation("TeamMemberships")
   addedTeamMemberships TeamMembership[]      @relation("AddedTeamMembers")
   notificationSettings NotificationSetting[]
+  activities           Activity[]
 }
 
 model NotificationSetting {
@@ -56,6 +57,7 @@ model Organization {
   members                  User[]
   integrationAccounts      IntegrationAccount[]
   integrationInstallations IntegrationInstallation[]
+  activities               Activity[]
 }
 
 model Team {
@@ -67,6 +69,7 @@ model Team {
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   members      TeamMembership[]
+  activities   Activity[]
 }
 
 model TeamMembership {
@@ -132,7 +135,25 @@ model IncomingWebhook {
   source       String
   externalId   String
   data         Json?
+  failed       Boolean   @default(false)
+  failedReason String?
   proceessedAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+}
+
+// IN PROGRESS
+model Activity {
+  id              String   @id @default(dbgenerated("nanoid(14)"))
+  activityMessage String
+  activityData    Json?
+  activityDate    DateTime
+  userId          String?
+  organizationId  String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teams        Team[]
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
