@@ -355,7 +355,7 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
 
   const commitDetails = await Promise.all(
     commits.map(async (commit) => {
-      return githubApiRequestWithRetry(
+      const repoDetails = await githubApiRequestWithRetry(
         integrationInstallation,
         'GET /repos/{owner}/{repo}/commits/{ref}',
         {
@@ -364,6 +364,7 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
           ref: commit.url.split('/').pop(),
         }
       );
+      return repoDetails;
     })
   );
 
