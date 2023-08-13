@@ -9,7 +9,11 @@ import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
 import { Prisma } from '@prisma/client';
 import { Octokit } from '@octokit/core';
 import { INTEGRATION_NAMES } from '../lib/constants';
-import { getInstallationAuth, githubApiRequestWithRetry } from '../lib/github';
+import {
+  getInstallationAuth,
+  githubApiRequestWithRetry,
+  getCommitDetailsMessage,
+} from '../lib/github';
 import { saveIncomingWebhook } from './utils';
 
 const githubWebhooks = new Webhooks({
@@ -349,10 +353,8 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
     },
   });
 
-  // Additional things to do when processing the event:
-  // - get the details of the commit
+  // Get the details of each commit
   // https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#get-a-commit
-
   const commitDetails = await Promise.all(
     commits.map(async (commit) => {
       const repoDetails = await githubApiRequestWithRetry(
@@ -361,10 +363,10 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
         {
           owner: repository.owner.login,
           repo: repository.name,
-          ref: commit.url.split('/').pop(),
+          ref: commit.id,
         }
       );
-      return repoDetails;
+      return repoDetails.data;
     })
   );
 
@@ -373,7 +375,12 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
     data: {
       organizationId: integrationInstallation.organizationId as string,
       userId: integrationAccount?.userId as string,
-      activityMessage: '',
+      activityMessage: `
+Event: ${name}
+Source: ${INTEGRATION_NAMES.GITHUB}
+Activity: ${sender.login} pushed ${commits.length} commit(s) to ${repository.name}
+Commit(s): 
+  ${commitDetails.map((commit) => getCommitDetailsMessage(commit))}`,
       activityDate: new Date(),
       activityData: {
         event: name,
@@ -385,7 +392,7 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
     },
   });
 
-  // Save the webhook
+  // Mark the webhook as processed
   await prisma.incomingWebhook.update({
     where: {
       id: webhook.id,

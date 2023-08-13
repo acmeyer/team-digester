@@ -2,6 +2,7 @@ import { Config } from '../config';
 import { createAppAuth } from '@octokit/auth-app';
 import { Octokit } from '@octokit/core';
 import { RequestParameters, OctokitResponse } from '@octokit/types';
+import { components } from '@octokit/openapi-types';
 import { Installation as GithubIntegrationInstallationData } from '@octokit/webhooks-types';
 import fs from 'fs';
 import { prisma } from './prisma';
@@ -72,4 +73,25 @@ export const githubApiRequestWithRetry = async (
       throw error;
     }
   }
+};
+
+export const getCommitDetailsMessage = async (commit: components['schemas']['commit']) => {
+  return `Commit: ${commit.sha}
+URL: ${commit.url}
+Message: ${commit.commit.message}
+${
+  commit.stats
+    ? `Stats: ${commit.stats.additions} additions and ${commit.stats.deletions} deletions`
+    : ''
+}
+${commit.files ? `Changes: ${getFilesChangesMessage(commit.files)}` : ''}`;
+};
+
+export const getFilesChangesMessage = (files: components['schemas']['commit']['files']) => {
+  return files?.map((file) => {
+    return `
+Filename: ${file.filename}
+Stats: ${file.changes} changes, ${file.additions} additions and ${file.deletions} deletions
+Code changes: ${file.patch}`;
+  });
 };
