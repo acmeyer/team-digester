@@ -375,12 +375,11 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
     data: {
       organizationId: integrationInstallation.organizationId as string,
       userId: integrationAccount?.userId as string,
-      activityMessage: `
-Event: ${name}
+      activityMessage: `Event: ${name}
 Source: ${INTEGRATION_NAMES.GITHUB}
 Activity: ${sender.login} pushed ${commits.length} commit(s) to ${repository.name}
 Commit(s): 
-  ${commitDetails.map((commit) => getCommitDetailsMessage(commit))}`,
+  ${commitDetails.map((commit) => getCommitDetailsMessage(commit)).join('\n')}`,
       activityDate: new Date(),
       activityData: {
         event: name,

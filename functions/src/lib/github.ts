@@ -78,7 +78,7 @@ export const githubApiRequestWithRetry = async (
   }
 };
 
-export const getCommitDetailsMessage = async (commit: components['schemas']['commit']) => {
+export const getCommitDetailsMessage = (commit: components['schemas']['commit']) => {
   return `Commit: ${commit.sha}
 URL: ${commit.url}
 Message: ${commit.commit.message}
