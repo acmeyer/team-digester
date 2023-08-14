@@ -274,7 +274,7 @@ githubWebhooks.on('pull_request', async ({ id, name, payload }) => {
       'assigned',
     ].includes(action)
   ) {
-    logger.error('Unsupported action for pull_request', action, { structuredData: true });
+    logger.info('Unsupported action for pull_request', action, { structuredData: true });
     return;
   }
 
@@ -329,7 +329,7 @@ githubWebhooks.on('pull_request_review_comment', async ({ id, name, payload }) =
   const { action, sender, pull_request: pullRequest, repository, comment } = payload;
 
   if (!['created', 'edited'].includes(action)) {
-    logger.error('Unsupported action for pull_request_review_comment', action, {
+    logger.info('Unsupported action for pull_request_review_comment', action, {
       structuredData: true,
     });
     return;
