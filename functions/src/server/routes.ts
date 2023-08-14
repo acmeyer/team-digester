@@ -5,15 +5,10 @@ import { redis } from '../lib/redis';
 import { prisma } from '../lib/prisma';
 import { OauthStateStore } from '../types';
 import { Config } from '../config';
-import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
 import { Prisma } from '@prisma/client';
 import { Octokit } from '@octokit/core';
 import { INTEGRATION_NAMES } from '../lib/constants';
 import { getInstallationAuth } from '../lib/github';
-
-const githubWebhooks = new Webhooks({
-  secret: Config.GITHUB_WEBHOOK_SECRET,
-});
 
 router.get('/health_check', (_req, res) => {
   res.send('Ok');
@@ -208,134 +203,6 @@ router.get('/github/callback', async (req, res) => {
       message: 'Failed to create integration provider account',
     });
   }
-});
-
-router.post('/github/webhooks', async (req, res) => {
-  const { headers } = req;
-  const { 'x-github-event': event } = headers;
-
-  try {
-    const webhook = {
-      id: req.header('X-GitHub-Delivery') || '',
-      name: event as EmitterWebhookEventName,
-      payload: JSON.stringify(req.body),
-      signature: req.header('X-Hub-Signature') || '',
-    };
-    await githubWebhooks.verifyAndReceive(webhook);
-    return res.status(200).send({
-      message: 'Ok',
-    });
-  } catch (err) {
-    logger.error(err, { structuredData: true });
-    return res.status(401).send({
-      error: 'Unauthorized',
-    });
-  }
-});
-
-githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
-  logger.info('installation.created callback', id, name, payload, { structuredData: true });
-
-  const { installation } = payload;
-
-  // get a token for later usage
-  const installationAuth = await getInstallationAuth(installation.id.toString());
-  // Use installation to create a new integration installation if necessary,
-  // this is a placeholder until it's completed after the OAuth flow
-  await prisma.integrationInstallation.upsert({
-    where: {
-      integrationName_externalId: {
-        integrationName: INTEGRATION_NAMES.GITHUB,
-        externalId: installation.id.toString(),
-      },
-    },
-    update: {}, // We'll skip updating anyting in the webhook since it should be taken care of in the OAuth flow
-    create: {
-      integrationName: INTEGRATION_NAMES.GITHUB,
-      externalId: installation.id.toString(),
-      data: installation as unknown as Prisma.JsonObject,
-      accessToken: installationAuth.token,
-      accountName: installation.account?.name || installation.account?.login,
-    },
-  });
-});
-
-githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
-  console.log('installation.deleted callback', { id, name, payload });
-  const { installation } = payload;
-
-  // Remove the integration installation from the database
-  await prisma.integrationInstallation.delete({
-    where: {
-      integrationName_externalId: {
-        externalId: installation.id.toString(),
-        integrationName: INTEGRATION_NAMES.GITHUB,
-      },
-    },
-  });
-
-  // Future question? Should we remove all associated IntegrationAccounts too?
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request
-githubWebhooks.on('pull_request', async ({ id, name, payload }) => {
-  console.log('pull_request callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review_comment
-githubWebhooks.on('pull_request_review_comment', async ({ id, name, payload }) => {
-  console.log('pull_request_review_comment callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review
-githubWebhooks.on('pull_request_review', async ({ id, name, payload }) => {
-  console.log('pull_request_review callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review_thread
-githubWebhooks.on('pull_request_review_thread', async ({ id, name, payload }) => {
-  console.log('pull_request_review_thread callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#push
-githubWebhooks.on('push', async ({ id, name, payload }) => {
-  console.log('push callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#release
-githubWebhooks.on('release', async ({ id, name, payload }) => {
-  console.log('release callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
-githubWebhooks.on('issue_comment', async ({ id, name, payload }) => {
-  // Created and edited only
-  console.log('issue_comment callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issues
-githubWebhooks.on('issues', async ({ id, name, payload }) => {
-  console.log('issues callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#deployment
-githubWebhooks.on('deployment', async ({ id, name, payload }) => {
-  console.log('deployment callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#discussion
-githubWebhooks.on('discussion', async ({ id, name, payload }) => {
-  console.log('discussion callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#discussion_comment
-githubWebhooks.on('discussion_comment', async ({ id, name, payload }) => {
-  console.log('discussion_comment callback', { id, name, payload });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#commit_comment
-githubWebhooks.on('commit_comment', async ({ id, name, payload }) => {
-  console.log('commit_comment callback', { id, name, payload });
 });
 
 export default router;
