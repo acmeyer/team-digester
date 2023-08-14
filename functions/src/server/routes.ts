@@ -238,6 +238,11 @@ router.post('/github/webhooks', async (req, res) => {
   }
 });
 
+githubWebhooks.onError((err) => {
+  logger.error(err, { structuredData: true });
+  console.error(err);
+});
+
 githubWebhooks.on('installation.created', async ({ id, name, payload }) => {
   logger.info('installation.created callback', id, name, payload, { structuredData: true });
 
