@@ -4,12 +4,15 @@ import * as logger from 'firebase-functions/logger';
 import { prisma } from '../lib/prisma';
 import { Config } from '../config';
 import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
-import { Prisma } from '@prisma/client';
+import { PushEvent, PullRequestEvent } from '@octokit/webhooks-types';
+import { IncomingWebhook, Prisma } from '@prisma/client';
+import { components } from '@octokit/openapi-types';
 import { INTEGRATION_NAMES } from '../lib/constants';
 import {
   getInstallationAuth,
   githubApiRequestWithRetry,
   getCommitDetailsMessage,
+  getPullRequestDetailsMessage,
 } from '../lib/github';
 import { saveIncomingWebhook } from './utils';
 
@@ -89,32 +92,25 @@ githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
   // Future question? Should we remove all associated IntegrationAccounts too?
 });
 
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#push
-githubWebhooks.on('push', async ({ id, name, payload }) => {
-  console.log('push callback', { id, name, payload });
-
-  const webhook = await saveIncomingWebhook({
-    id,
-    event: name,
-    source: INTEGRATION_NAMES.GITHUB,
-    payload,
-  });
-
-  const { commits, repository, sender, installation } = payload;
+const getAccountsForWebhook = async (
+  payload: PushEvent | PullRequestEvent,
+  webhook: IncomingWebhook
+) => {
+  const { sender, installation } = payload;
 
   if (!installation) {
-    logger.error('No installation found in push event', webhook.id, { structuredData: true });
+    logger.error('No installation found in event', webhook.id, { structuredData: true });
     await prisma.incomingWebhook.update({
       where: {
         id: webhook.id,
       },
       data: {
         failed: true,
-        failedReason: 'No installation found in push event',
+        failedReason: 'No installation found in event',
       },
     });
 
-    return;
+    throw new Error('No installation found in event');
   }
 
   // Get the installation and organization
@@ -131,7 +127,7 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
   });
 
   if (!integrationInstallation || !integrationInstallation.organization) {
-    logger.error('No integration installation or organization found for push event', webhook.id, {
+    logger.error('No integration installation or organization found for event', webhook.id, {
       structuredData: true,
     });
     await prisma.incomingWebhook.update({
@@ -140,10 +136,10 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
       },
       data: {
         failed: true,
-        failedReason: 'No integration installation or organization found for push event',
+        failedReason: 'No integration installation or organization found for event',
       },
     });
-    return;
+    throw new Error('No integration installation or organization found for event');
   }
 
   // Get the user and integration account
@@ -159,6 +155,33 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
       user: true,
     },
   });
+
+  return {
+    integrationInstallation,
+    organization: integrationInstallation.organization,
+    integrationAccount,
+    user: integrationAccount?.user,
+  };
+};
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#push
+githubWebhooks.on('push', async ({ id, name, payload }) => {
+  console.log('push callback', { id, name, payload });
+
+  const webhook = await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
+
+  const { commits, repository, sender } = payload;
+
+  // Get installation, organization, integration account, and user
+  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+    payload,
+    webhook
+  );
 
   // Get the details of each commit
   // https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#get-a-commit
@@ -212,22 +235,99 @@ Commit(s):
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request
 githubWebhooks.on('pull_request', async ({ id, name, payload }) => {
   console.log('pull_request callback', { id, name, payload });
-  await saveIncomingWebhook({
+
+  const { action, sender, pull_request: pullRequest, repository } = payload;
+
+  if (
+    ![
+      'closed',
+      'edited',
+      'opened',
+      'read_for_review',
+      'reopened',
+      'review_requested',
+      'assigned',
+    ].includes(action)
+  ) {
+    logger.error('Unsupported action for pull_request', action, { structuredData: true });
+    return;
+  }
+
+  const webhook = await saveIncomingWebhook({
     id,
     event: name,
     source: INTEGRATION_NAMES.GITHUB,
     payload,
+  });
+
+  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+    payload,
+    webhook
+  );
+
+  // Store the activity
+  await prisma.activity.create({
+    data: {
+      organizationId: integrationInstallation.organizationId as string,
+      userId: integrationAccount?.userId as string,
+      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
+Source: ${INTEGRATION_NAMES.GITHUB}
+Activity: ${sender.login} ${action} pull request #${pullRequest.number} "${
+        pullRequest.title
+      }" for the ${repository.name} repo
+Details:
+  ${getPullRequestDetailsMessage(pullRequest as components['schemas']['pull-request'])}`,
+      activityDate: new Date(),
+      activityData: {
+        event: name,
+        action,
+        pullRequest,
+        repository,
+        sender,
+      } as unknown as Prisma.JsonObject,
+    },
+  });
+
+  console.log('pull_request', { pullRequest });
+
+  await prisma.incomingWebhook.update({
+    where: {
+      id: webhook.id,
+    },
+    data: {
+      proceessedAt: new Date(),
+    },
   });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review_comment
 githubWebhooks.on('pull_request_review_comment', async ({ id, name, payload }) => {
   console.log('pull_request_review_comment callback', { id, name, payload });
-  await saveIncomingWebhook({
+  const { action } = payload;
+
+  if (!['created', 'edited'].includes(action)) {
+    logger.error('Unsupported action for pull_request_review_comment', action, {
+      structuredData: true,
+    });
+    return;
+  }
+
+  const webhook = await saveIncomingWebhook({
     id,
     event: name,
     source: INTEGRATION_NAMES.GITHUB,
     payload,
+  });
+
+  // TODO: do something with the pull_request_review_comment activity
+
+  await prisma.incomingWebhook.update({
+    where: {
+      id: webhook.id,
+    },
+    data: {
+      proceessedAt: new Date(),
+    },
   });
 });
 
@@ -265,24 +365,31 @@ githubWebhooks.on('release', async ({ id, name, payload }) => {
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
-githubWebhooks.on('issue_comment.created', async ({ id, name, payload }) => {
-  console.log('issue_comment.created callback', { id, name, payload });
-  await saveIncomingWebhook({
+githubWebhooks.on('issue_comment', async ({ id, name, payload }) => {
+  console.log('issue_comment callback', { id, name, payload });
+  const { action } = payload;
+
+  if (!['created', 'edited'].includes(action)) {
+    logger.error('Unsupported action for issue_comment', action, { structuredData: true });
+    return;
+  }
+
+  const webhook = await saveIncomingWebhook({
     id,
     event: name,
     source: INTEGRATION_NAMES.GITHUB,
     payload,
   });
-});
 
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
-githubWebhooks.on('issue_comment.edited', async ({ id, name, payload }) => {
-  console.log('issue_comment.edited callback', { id, name, payload });
-  await saveIncomingWebhook({
-    id,
-    event: name,
-    source: INTEGRATION_NAMES.GITHUB,
-    payload,
+  // TODO: do something with the issue_comment activity
+
+  await prisma.incomingWebhook.update({
+    where: {
+      id: webhook.id,
+    },
+    data: {
+      proceessedAt: new Date(),
+    },
   });
 });
 

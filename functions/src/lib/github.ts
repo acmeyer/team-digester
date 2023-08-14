@@ -84,3 +84,29 @@ Stats: ${file.changes} changes, ${file.additions} additions and ${file.deletions
 Code changes: "${file.patch}"`;
   });
 };
+
+export const getPullRequestDetailsMessage = (
+  pullRequest: components['schemas']['pull-request']
+) => {
+  return `Pull Request: ${pullRequest.number}
+URL: ${pullRequest.html_url}
+Title: ${pullRequest.title}
+Body: ${pullRequest.body}
+${
+  pullRequest.merged
+    ? `Merged at: ${pullRequest.merged_at}
+Merged by: ${pullRequest.merged_by?.login}`
+    : ''
+}
+${pullRequest.commits ? `Commits: ${pullRequest.commits}` : ''}
+${pullRequest.additions ? `Additions: ${pullRequest.additions}` : ''}
+${pullRequest.deletions ? `Deletions: ${pullRequest.deletions}` : ''}
+${pullRequest.changed_files ? `Changed files: ${pullRequest.changed_files}` : ''}
+${
+  pullRequest.requested_reviewers?.length
+    ? `Requested reviewers: ${pullRequest.requested_reviewers
+        .map((reviewer) => reviewer.login)
+        .join(', ')}`
+    : ''
+}`;
+};
