@@ -4,7 +4,17 @@ import * as logger from 'firebase-functions/logger';
 import { prisma } from '../lib/prisma';
 import { Config } from '../config';
 import { Webhooks, EmitterWebhookEventName } from '@octokit/webhooks';
-import { PushEvent, PullRequestEvent } from '@octokit/webhooks-types';
+import {
+  PushEvent,
+  PullRequestEvent,
+  PullRequestReviewCommentEvent,
+  PullRequestReviewEvent,
+  PullRequestReviewThreadEvent,
+  ReleaseEvent,
+  IssueCommentEvent,
+  IssuesEvent,
+  CommitCommentCreatedEvent,
+} from '@octokit/webhooks-types';
 import { IncomingWebhook, Prisma } from '@prisma/client';
 import { components } from '@octokit/openapi-types';
 import { INTEGRATION_NAMES } from '../lib/constants';
@@ -13,6 +23,12 @@ import {
   githubApiRequestWithRetry,
   getCommitDetailsMessage,
   getPullRequestDetailsMessage,
+  getPullRequestCommentDetailsMessage,
+  getPullRequestReviewDetailsMessage,
+  getReleaseDetailsMessage,
+  getIssueCommentDetailsMessage,
+  getIssueDetailsMessage,
+  getCommitCommentDetailsMessage,
 } from '../lib/github';
 import { saveIncomingWebhook } from './utils';
 
@@ -93,7 +109,16 @@ githubWebhooks.on('installation.deleted', async ({ id, name, payload }) => {
 });
 
 const getAccountsForWebhook = async (
-  payload: PushEvent | PullRequestEvent,
+  payload:
+    | PushEvent
+    | PullRequestEvent
+    | PullRequestReviewCommentEvent
+    | PullRequestReviewEvent
+    | PullRequestReviewThreadEvent
+    | ReleaseEvent
+    | IssueCommentEvent
+    | IssuesEvent
+    | CommitCommentCreatedEvent,
   webhook: IncomingWebhook
 ) => {
   const { sender, installation } = payload;
@@ -288,8 +313,6 @@ Details:
     },
   });
 
-  console.log('pull_request', { pullRequest });
-
   await prisma.incomingWebhook.update({
     where: {
       id: webhook.id,
@@ -303,7 +326,7 @@ Details:
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review_comment
 githubWebhooks.on('pull_request_review_comment', async ({ id, name, payload }) => {
   console.log('pull_request_review_comment callback', { id, name, payload });
-  const { action } = payload;
+  const { action, sender, pull_request: pullRequest, repository, comment } = payload;
 
   if (!['created', 'edited'].includes(action)) {
     logger.error('Unsupported action for pull_request_review_comment', action, {
@@ -319,7 +342,36 @@ githubWebhooks.on('pull_request_review_comment', async ({ id, name, payload }) =
     payload,
   });
 
-  // TODO: do something with the pull_request_review_comment activity
+  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+    payload,
+    webhook
+  );
+
+  // Store the activity
+  await prisma.activity.create({
+    data: {
+      organizationId: integrationInstallation.organizationId as string,
+      userId: integrationAccount?.userId as string,
+      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
+Source: ${INTEGRATION_NAMES.GITHUB}
+Activity: ${sender.login} ${action} pull request review comment on #${pullRequest.number} "${
+        pullRequest.title
+      }" for the ${repository.name} repo
+Details:
+  ${getPullRequestCommentDetailsMessage(
+    comment as components['schemas']['pull-request-review-comment']
+  )}`,
+      activityDate: new Date(),
+      activityData: {
+        event: name,
+        action,
+        pullRequest,
+        repository,
+        comment,
+        sender,
+      } as unknown as Prisma.JsonObject,
+    },
+  });
 
   await prisma.incomingWebhook.update({
     where: {
@@ -334,45 +386,7 @@ githubWebhooks.on('pull_request_review_comment', async ({ id, name, payload }) =
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review
 githubWebhooks.on('pull_request_review', async ({ id, name, payload }) => {
   console.log('pull_request_review callback', { id, name, payload });
-  await saveIncomingWebhook({
-    id,
-    event: name,
-    source: INTEGRATION_NAMES.GITHUB,
-    payload,
-  });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review_thread
-githubWebhooks.on('pull_request_review_thread', async ({ id, name, payload }) => {
-  console.log('pull_request_review_thread callback', { id, name, payload });
-  await saveIncomingWebhook({
-    id,
-    event: name,
-    source: INTEGRATION_NAMES.GITHUB,
-    payload,
-  });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#release
-githubWebhooks.on('release', async ({ id, name, payload }) => {
-  console.log('release callback', { id, name, payload });
-  await saveIncomingWebhook({
-    id,
-    event: name,
-    source: INTEGRATION_NAMES.GITHUB,
-    payload,
-  });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
-githubWebhooks.on('issue_comment', async ({ id, name, payload }) => {
-  console.log('issue_comment callback', { id, name, payload });
-  const { action } = payload;
-
-  if (!['created', 'edited'].includes(action)) {
-    logger.error('Unsupported action for issue_comment', action, { structuredData: true });
-    return;
-  }
+  const { action, sender, pull_request: pullRequest, repository, review } = payload;
 
   const webhook = await saveIncomingWebhook({
     id,
@@ -381,7 +395,185 @@ githubWebhooks.on('issue_comment', async ({ id, name, payload }) => {
     payload,
   });
 
-  // TODO: do something with the issue_comment activity
+  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+    payload,
+    webhook
+  );
+
+  // Store the activity
+  await prisma.activity.create({
+    data: {
+      organizationId: integrationInstallation.organizationId as string,
+      userId: integrationAccount?.userId as string,
+      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
+Source: ${INTEGRATION_NAMES.GITHUB}
+Activity: ${sender.login} ${action} a pull request review on #${pullRequest.number} "${
+        pullRequest.title
+      }" for the ${repository.name} repo
+Details:
+  ${getPullRequestReviewDetailsMessage(review as components['schemas']['pull-request-review'])}`,
+      activityDate: new Date(),
+      activityData: {
+        event: name,
+        action,
+        pullRequest,
+        repository,
+        review,
+        sender,
+      } as unknown as Prisma.JsonObject,
+    },
+  });
+
+  await prisma.incomingWebhook.update({
+    where: {
+      id: webhook.id,
+    },
+    data: {
+      proceessedAt: new Date(),
+    },
+  });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#pull_request_review_thread
+githubWebhooks.on('pull_request_review_thread', async ({ id, name, payload }) => {
+  console.log('pull_request_review_thread callback', { id, name, payload });
+  const { action, sender, pull_request: pullRequest, repository, thread } = payload;
+
+  const webhook = await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
+
+  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+    payload,
+    webhook
+  );
+
+  // Store the activity
+  await prisma.activity.create({
+    data: {
+      organizationId: integrationInstallation.organizationId as string,
+      userId: integrationAccount?.userId as string,
+      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
+Source: ${INTEGRATION_NAMES.GITHUB}
+Activity: ${sender.login} ${action} a pull request review on #${pullRequest.number} "${
+        pullRequest.title
+      }" for the ${repository.name} repo`,
+      activityDate: new Date(),
+      activityData: {
+        event: name,
+        action,
+        pullRequest,
+        thread,
+        repository,
+        sender,
+      } as unknown as Prisma.JsonObject,
+    },
+  });
+
+  await prisma.incomingWebhook.update({
+    where: {
+      id: webhook.id,
+    },
+    data: {
+      proceessedAt: new Date(),
+    },
+  });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#release
+githubWebhooks.on('release', async ({ id, name, payload }) => {
+  console.log('release callback', { id, name, payload });
+  const { action, sender, repository, release } = payload;
+
+  const webhook = await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
+
+  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+    payload,
+    webhook
+  );
+
+  // Store the activity
+  await prisma.activity.create({
+    data: {
+      organizationId: integrationInstallation.organizationId as string,
+      userId: integrationAccount?.userId as string,
+      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
+Source: ${INTEGRATION_NAMES.GITHUB}
+Activity: ${sender.login} ${action} a release on the ${repository.name} repo
+Details:
+  ${getReleaseDetailsMessage(release as components['schemas']['release'])}`,
+      activityDate: new Date(),
+      activityData: {
+        event: name,
+        action,
+        release,
+        repository,
+        sender,
+      } as unknown as Prisma.JsonObject,
+    },
+  });
+
+  await prisma.incomingWebhook.update({
+    where: {
+      id: webhook.id,
+    },
+    data: {
+      proceessedAt: new Date(),
+    },
+  });
+});
+
+// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issue_comment
+githubWebhooks.on('issue_comment', async ({ id, name, payload }) => {
+  console.log('issue_comment callback', { id, name, payload });
+  const { action, sender, repository, issue, comment } = payload;
+
+  const webhook = await saveIncomingWebhook({
+    id,
+    event: name,
+    source: INTEGRATION_NAMES.GITHUB,
+    payload,
+  });
+
+  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+    payload,
+    webhook
+  );
+
+  // Store the activity
+  await prisma.activity.create({
+    data: {
+      organizationId: integrationInstallation.organizationId as string,
+      userId: integrationAccount?.userId as string,
+      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
+Source: ${INTEGRATION_NAMES.GITHUB}
+Activity: ${sender.login} ${action} an issue comment on the #${issue.number} issue ${
+        issue.title
+      } for the ${repository.name} repo
+Details:
+  ${getIssueCommentDetailsMessage(
+    issue as components['schemas']['issue'],
+    comment as components['schemas']['issue-comment']
+  )}`,
+      activityDate: new Date(),
+      activityData: {
+        event: name,
+        action,
+        issue,
+        comment,
+        repository,
+        sender,
+      } as unknown as Prisma.JsonObject,
+    },
+  });
 
   await prisma.incomingWebhook.update({
     where: {
@@ -396,55 +588,98 @@ githubWebhooks.on('issue_comment', async ({ id, name, payload }) => {
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#issues
 githubWebhooks.on('issues', async ({ id, name, payload }) => {
   console.log('issues callback', { id, name, payload });
-  await saveIncomingWebhook({
+  const { action, sender, repository, issue } = payload;
+
+  const webhook = await saveIncomingWebhook({
     id,
     event: name,
     source: INTEGRATION_NAMES.GITHUB,
     payload,
   });
-});
 
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#deployment
-githubWebhooks.on('deployment', async ({ id, name, payload }) => {
-  console.log('deployment callback', { id, name, payload });
-  await saveIncomingWebhook({
-    id,
-    event: name,
-    source: INTEGRATION_NAMES.GITHUB,
+  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
     payload,
+    webhook
+  );
+
+  // Store the activity
+  await prisma.activity.create({
+    data: {
+      organizationId: integrationInstallation.organizationId as string,
+      userId: integrationAccount?.userId as string,
+      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
+  Source: ${INTEGRATION_NAMES.GITHUB}
+  Activity: ${sender.login} ${action} an issue comment on the #${issue.number} issue ${
+        issue.title
+      } for the ${repository.name} repo
+  Details:
+    ${getIssueDetailsMessage(issue as components['schemas']['issue'])}`,
+      activityDate: new Date(),
+      activityData: {
+        event: name,
+        action,
+        issue,
+        repository,
+        sender,
+      } as unknown as Prisma.JsonObject,
+    },
   });
-});
 
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#discussion
-githubWebhooks.on('discussion', async ({ id, name, payload }) => {
-  console.log('discussion callback', { id, name, payload });
-  await saveIncomingWebhook({
-    id,
-    event: name,
-    source: INTEGRATION_NAMES.GITHUB,
-    payload,
-  });
-});
-
-// https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#discussion_comment
-githubWebhooks.on('discussion_comment', async ({ id, name, payload }) => {
-  console.log('discussion_comment callback', { id, name, payload });
-  await saveIncomingWebhook({
-    id,
-    event: name,
-    source: INTEGRATION_NAMES.GITHUB,
-    payload,
+  await prisma.incomingWebhook.update({
+    where: {
+      id: webhook.id,
+    },
+    data: {
+      proceessedAt: new Date(),
+    },
   });
 });
 
 // https://docs.github.com/en/webhooks-and-events/webhooks/webhook-events-and-payloads#commit_comment
 githubWebhooks.on('commit_comment', async ({ id, name, payload }) => {
   console.log('commit_comment callback', { id, name, payload });
-  await saveIncomingWebhook({
+  const { action, sender, repository, comment } = payload;
+
+  const webhook = await saveIncomingWebhook({
     id,
     event: name,
     source: INTEGRATION_NAMES.GITHUB,
     payload,
+  });
+
+  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+    payload,
+    webhook
+  );
+
+  // Store the activity
+  await prisma.activity.create({
+    data: {
+      organizationId: integrationInstallation.organizationId as string,
+      userId: integrationAccount?.userId as string,
+      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
+Source: ${INTEGRATION_NAMES.GITHUB}
+Activity: ${sender.login} ${action} a commit comment on the ${repository.name} repo
+Details:
+  ${getCommitCommentDetailsMessage(comment as components['schemas']['commit-comment'])}`,
+      activityDate: new Date(),
+      activityData: {
+        event: name,
+        action,
+        comment,
+        repository,
+        sender,
+      } as unknown as Prisma.JsonObject,
+    },
+  });
+
+  await prisma.incomingWebhook.update({
+    where: {
+      id: webhook.id,
+    },
+    data: {
+      proceessedAt: new Date(),
+    },
   });
 });
 

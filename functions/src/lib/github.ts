@@ -88,9 +88,9 @@ Code changes: "${file.patch}"`;
 export const getPullRequestDetailsMessage = (
   pullRequest: components['schemas']['pull-request']
 ) => {
-  return `Pull Request: ${pullRequest.number}
+  return `Pull Request: #${pullRequest.number} - ${pullRequest.title}
+State: ${pullRequest.state}
 URL: ${pullRequest.html_url}
-Title: ${pullRequest.title}
 Body: ${pullRequest.body}
 ${
   pullRequest.merged
@@ -109,4 +109,60 @@ ${
         .join(', ')}`
     : ''
 }`;
+};
+
+export const getPullRequestCommentDetailsMessage = (
+  pullRequestComment: components['schemas']['pull-request-review-comment']
+) => {
+  return `Pull Request Comment:
+URL: ${pullRequestComment.html_url}
+Comment: ${pullRequestComment.body}
+${pullRequestComment.user ? `By: ${pullRequestComment.user.login}` : ''}`;
+};
+
+export const getPullRequestReviewDetailsMessage = (
+  pullRequestReview: components['schemas']['pull-request-review']
+) => {
+  return `Pull Request Review: ${pullRequestReview.id}
+URL: ${pullRequestReview.html_url}
+State: ${pullRequestReview.state}
+Body: ${pullRequestReview.body}
+${pullRequestReview.user ? `By: ${pullRequestReview.user.login}` : ''}`;
+};
+
+export const getReleaseDetailsMessage = (release: components['schemas']['release']) => {
+  return `Release: ${release.name}
+URL: ${release.html_url}
+Tag: ${release.tag_name}
+Body: ${release.body}
+${release.author ? `Author: ${release.author.login}` : ''}`;
+};
+
+export const getIssueDetailsMessage = (issue: components['schemas']['issue']) => {
+  return `Issue: #${issue.number} - ${issue.title}
+State: ${issue.state}
+URL: ${issue.html_url}
+Body: ${issue.body}
+${issue.user ? `Created By: ${issue.user.login}` : ''}`;
+};
+
+export const getIssueCommentDetailsMessage = (
+  issue: components['schemas']['issue'],
+  issueComment: components['schemas']['issue-comment']
+) => {
+  return `Issue: #${issue.number} - ${issue.title}
+Body: ${issue.body}
+Comment: ${issueComment.body}
+${issueComment.user ? `By: ${issueComment.user.login}` : ''}`;
+};
+
+export const getCommitCommentDetailsMessage = (
+  commitComment: components['schemas']['commit-comment']
+) => {
+  return `Commit Comment:
+URL: ${commitComment.html_url}
+Line: ${commitComment.line}
+Commit: ${commitComment.commit_id}
+Comment: ${commitComment.body}
+${commitComment.user ? `By: ${commitComment.user.login}` : ''}`;
 };
