@@ -134,9 +134,9 @@ export const userChangeHandler = async ({
   });
 
   // Update user
-  await Promise.all(
+  const updatedUsers = await Promise.all(
     users.map(async (user) => {
-      await prisma.user.update({
+      return prisma.user.update({
         where: {
           id: user.id,
         },
@@ -145,7 +145,7 @@ export const userChangeHandler = async ({
           pictureUrl: slackUser.profile.image_512,
           tz: slackUser.tz,
           tzLabel: slackUser.tz_label,
-          tzOffset: slackUser.tz_offset,
+          tzOffset: (slackUser.tz_offset || 0) / 60, // Convert to minutes, Slack returns seconds
         },
       });
     })
@@ -153,7 +153,7 @@ export const userChangeHandler = async ({
 
   // Update notification settings, which depend on the user's timezone
   await Promise.all(
-    users.map(async (user) => {
+    updatedUsers.map(async (user) => {
       const usersNotificationSettings = await prisma.notificationSetting.findMany({
         where: {
           userId: user.id,

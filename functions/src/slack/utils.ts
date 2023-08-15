@@ -266,7 +266,7 @@ export const findOrCreateUserFromSlack = async (
       name: slackUserData?.profile?.real_name,
       tz: slackUserData?.tz,
       tzLabel: slackUserData?.tz_label,
-      tzOffset: slackUserData?.tz_offset,
+      tzOffset: (slackUserData?.tz_offset || 0) / 60, // Convert to minutes, Slack returns seconds
       organizations: {
         connect: {
           id: organization.id,
