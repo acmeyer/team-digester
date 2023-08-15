@@ -14,7 +14,7 @@ import * as logger from 'firebase-functions/logger';
 import { NotificationType, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { refreshHomeView } from './viewHandlers';
-import { findUserFromSlackId } from '../lib/utils';
+import { findUserFromSlackId, getNotificationSettingValues } from '../lib/utils';
 import { INTEGRATION_NAMES } from '../lib/constants';
 import { githubApiRequestWithRetry } from '../lib/github';
 import { User as GithubAccount } from '@octokit/webhooks-types';
@@ -23,6 +23,7 @@ import {
   Timing,
   GroupedOptions,
   GitHubUsernameSelectState,
+  NotificationTimingValues,
 } from '../types';
 
 export const connectIntegrationHandler = async ({
@@ -481,21 +482,31 @@ export const notificationFrequencyHandler = async ({
       });
     })
   );
-  selectedNotificationTypes.map(async (type) => {
-    await prisma.notificationSetting.upsert({
-      where: {
-        userId_type: {
+
+  // Set default values for daily, weekly, and monthly notifications
+  await Promise.all(
+    selectedNotificationTypes.map(async (type) => {
+      const notificationValues = getNotificationSettingValues({
+        user,
+        type: type as NotificationType,
+      });
+
+      await prisma.notificationSetting.upsert({
+        where: {
+          userId_type: {
+            userId: user.id,
+            type: type as NotificationType,
+          },
+        },
+        update: {},
+        create: {
           userId: user.id,
           type: type as NotificationType,
+          ...notificationValues,
         },
-      },
-      update: {},
-      create: {
-        userId: user.id,
-        type: type as NotificationType,
-      },
-    });
-  });
+      });
+    })
+  );
 
   await refreshHomeView(client, slackUserId, slackOrgId);
 };
@@ -555,32 +566,6 @@ export const notificationTimingHandler = async ({
     }
   }
 
-  const notificationTimingValues: {
-    daily?: { hour: number };
-    weekly?: { hour: number; dayOfWeek: number };
-    monthly?: { hour: number; dayOfMonth: number };
-  } = {};
-
-  if (groupedOptions.daily.hour) {
-    notificationTimingValues.daily = {
-      hour: parseInt(groupedOptions.daily.hour as string),
-    };
-  }
-
-  if (groupedOptions.weekly.hour || groupedOptions.weekly.dayOfWeek) {
-    notificationTimingValues.weekly = {
-      hour: parseInt(groupedOptions.weekly.hour as string),
-      dayOfWeek: parseInt(groupedOptions.weekly.dayOfWeek as string),
-    };
-  }
-
-  if (groupedOptions.monthly) {
-    notificationTimingValues.monthly = {
-      hour: parseInt(groupedOptions.monthly.hour as string),
-      dayOfMonth: parseInt(groupedOptions.monthly.dayOfMonth as string),
-    };
-  }
-
   const { userId: slackUserId, teamId: slackOrgId } = context;
   if (!slackUserId || !slackOrgId) {
     throw new Error('Not found');
@@ -599,24 +584,62 @@ export const notificationTimingHandler = async ({
     throw new Error('User not found');
   }
 
-  selectedNotificationTypes.map(async (type: NotificationType) => {
-    await prisma.notificationSetting.upsert({
-      where: {
-        userId_type: {
+  const notificationTimingValues: NotificationTimingValues = {};
+
+  if (groupedOptions.daily.hour) {
+    const hour = parseInt(groupedOptions.daily.hour as string);
+
+    notificationTimingValues.daily = getNotificationSettingValues({
+      user,
+      type: NotificationType.daily,
+      hour,
+    });
+  }
+
+  if (groupedOptions.weekly.hour || groupedOptions.weekly.dayOfWeek) {
+    const hour = parseInt(groupedOptions.weekly.hour as string);
+    const dayOfWeek = parseInt(groupedOptions.weekly.dayOfWeek as string);
+
+    notificationTimingValues.weekly = getNotificationSettingValues({
+      user,
+      type: NotificationType.weekly,
+      hour,
+      dayOfWeek,
+    }) as NotificationTimingValues['weekly'];
+  }
+
+  if (groupedOptions.monthly) {
+    const hour = parseInt(groupedOptions.monthly.hour as string);
+    const dayOfMonth = parseInt(groupedOptions.monthly.dayOfMonth as string);
+
+    notificationTimingValues.monthly = getNotificationSettingValues({
+      user,
+      type: NotificationType.monthly,
+      hour,
+      dayOfMonth,
+    }) as NotificationTimingValues['monthly'];
+  }
+
+  await Promise.all(
+    selectedNotificationTypes.map(async (type: NotificationType) => {
+      await prisma.notificationSetting.upsert({
+        where: {
+          userId_type: {
+            userId: user.id,
+            type: type as NotificationType,
+          },
+        },
+        update: {
+          ...notificationTimingValues[type],
+        },
+        create: {
           userId: user.id,
           type: type as NotificationType,
+          ...notificationTimingValues[type],
         },
-      },
-      update: {
-        ...notificationTimingValues[type],
-      },
-      create: {
-        userId: user.id,
-        type: type as NotificationType,
-        ...notificationTimingValues[type],
-      },
-    });
-  });
+      });
+    })
+  );
 
   await refreshHomeView(client, slackUserId, slackOrgId);
 };

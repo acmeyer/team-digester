@@ -13,6 +13,7 @@ import * as logger from 'firebase-functions/logger';
 import { WebClient } from '@slack/web-api';
 import { prisma } from '../lib/prisma';
 import { INTEGRATION_NAMES } from '../lib/constants';
+import { getNotificationSettingValues } from '../lib/utils';
 
 export interface HomeViewWithTeam extends HomeView {
   team_id: string;
@@ -147,6 +148,38 @@ export const userChangeHandler = async ({
           tzOffset: slackUser.tz_offset,
         },
       });
+    })
+  );
+
+  // Update notification settings, which depend on the user's timezone
+  await Promise.all(
+    users.map(async (user) => {
+      const usersNotificationSettings = await prisma.notificationSetting.findMany({
+        where: {
+          userId: user.id,
+        },
+      });
+
+      await Promise.all(
+        usersNotificationSettings.map(async (notificationSetting) => {
+          const values = getNotificationSettingValues({
+            type: notificationSetting.type,
+            user,
+            hour: notificationSetting.hour || undefined,
+            dayOfWeek: notificationSetting.dayOfWeek || undefined,
+            dayOfMonth: notificationSetting.dayOfMonth || undefined,
+          });
+
+          await prisma.notificationSetting.update({
+            where: {
+              id: notificationSetting.id,
+            },
+            data: {
+              ...values,
+            },
+          });
+        })
+      );
     })
   );
 };

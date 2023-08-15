@@ -81,7 +81,7 @@ export type Timing = {
 };
 
 export type GroupedOptions = {
-  daily: { hour?: string; dayOfWeek?: string };
+  daily: { hour?: string };
   weekly: { hour?: string; dayOfWeek?: string };
   monthly: { hour?: string; dayOfMonth?: string };
 };
@@ -104,3 +104,9 @@ export type TeamFormState = {
 };
 
 export type TeamFormValues = TeamFormState['values'];
+
+export type NotificationTimingValues = {
+  daily?: { hour: number; hourUTC: number };
+  weekly?: { hour: number; hourUTC: number; dayOfWeek: number; dayOfWeekUTC: number };
+  monthly?: { hour: number; hourUTC: number; dayOfMonth: number; dayOfMonthUTC: number };
+};

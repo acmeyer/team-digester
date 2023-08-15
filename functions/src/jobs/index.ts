@@ -26,7 +26,7 @@ export const notifications = onSchedule('0 * * * *', async (event) => {
                   type: NotificationType.daily,
                 },
                 {
-                  hour: utcHour,
+                  hourUTC: utcHour,
                 },
               ],
             },
@@ -36,10 +36,10 @@ export const notifications = onSchedule('0 * * * *', async (event) => {
                   type: NotificationType.weekly,
                 },
                 {
-                  dayOfWeek: utcDayOfWeek,
+                  dayOfWeekUTC: utcDayOfWeek,
                 },
                 {
-                  hour: utcHour,
+                  hourUTC: utcHour,
                 },
               ],
             },
@@ -49,10 +49,10 @@ export const notifications = onSchedule('0 * * * *', async (event) => {
                   type: NotificationType.monthly,
                 },
                 {
-                  dayOfMonth: utcDayOfMonth,
+                  dayOfMonthUTC: utcDayOfMonth,
                 },
                 {
-                  hour: utcHour,
+                  hourUTC: utcHour,
                 },
               ],
             },
