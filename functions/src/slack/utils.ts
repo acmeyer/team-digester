@@ -216,9 +216,10 @@ export const findOrCreateUserFromSlack = async (
   });
 
   // Try to find the user by email
-  const slackUserData = await app.client.users.profile.get({
+  const { user: slackUserData } = await app.client.users.info({
     token: slackInstallation?.accessToken as string | undefined,
     user: slackId,
+    include_locale: true,
   });
 
   const user = await prisma.user.findFirst({
@@ -263,6 +264,9 @@ export const findOrCreateUserFromSlack = async (
       firstName: slackUserData?.profile?.first_name,
       lastName: slackUserData?.profile?.last_name,
       name: slackUserData?.profile?.real_name,
+      tz: slackUserData?.tz,
+      tzLabel: slackUserData?.tz_label,
+      tzOffset: slackUserData?.tz_offset,
       organizations: {
         connect: {
           id: organization.id,
@@ -300,14 +304,14 @@ export const findOrCreateUserFromSlack = async (
 };
 
 export const NOTIFICATION_TIMING_OPTIONS = {
-  timeOfDay: [
+  hour: [
     {
       text: {
         type: 'plain_text',
         text: '8:00 AM',
         emoji: true,
       },
-      value: '8am',
+      value: '8',
     },
     {
       text: {
@@ -315,7 +319,7 @@ export const NOTIFICATION_TIMING_OPTIONS = {
         text: '12:00 PM',
         emoji: true,
       },
-      value: '12pm',
+      value: '12',
     },
     {
       text: {
@@ -323,7 +327,7 @@ export const NOTIFICATION_TIMING_OPTIONS = {
         text: '5:00 PM',
         emoji: true,
       },
-      value: '5pm',
+      value: '17',
     },
   ] as Option[],
   dayOfWeek: [
@@ -333,7 +337,7 @@ export const NOTIFICATION_TIMING_OPTIONS = {
         text: 'Monday',
         emoji: true,
       },
-      value: 'monday',
+      value: '1',
     },
     {
       text: {
@@ -341,7 +345,7 @@ export const NOTIFICATION_TIMING_OPTIONS = {
         text: 'Tuesday',
         emoji: true,
       },
-      value: 'tuesday',
+      value: '2',
     },
     {
       text: {
@@ -349,7 +353,7 @@ export const NOTIFICATION_TIMING_OPTIONS = {
         text: 'Wednesday',
         emoji: true,
       },
-      value: 'wednesday',
+      value: '3',
     },
     {
       text: {
@@ -357,7 +361,7 @@ export const NOTIFICATION_TIMING_OPTIONS = {
         text: 'Thursday',
         emoji: true,
       },
-      value: 'thursday',
+      value: '4',
     },
     {
       text: {
@@ -365,7 +369,7 @@ export const NOTIFICATION_TIMING_OPTIONS = {
         text: 'Friday',
         emoji: true,
       },
-      value: 'friday',
+      value: '5',
     },
   ] as Option[],
   dayOfMonth: [
@@ -375,7 +379,7 @@ export const NOTIFICATION_TIMING_OPTIONS = {
         text: 'First of the month',
         emoji: true,
       },
-      value: 'first',
+      value: '1',
     },
     {
       text: {
@@ -383,7 +387,7 @@ export const NOTIFICATION_TIMING_OPTIONS = {
         text: 'Last of the month',
         emoji: true,
       },
-      value: 'last',
+      value: '-1',
     },
   ] as Option[],
 };

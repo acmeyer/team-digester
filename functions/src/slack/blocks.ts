@@ -520,17 +520,24 @@ const getNotificationTimingSelectedOptions = (
   setting: NotificationSetting,
   timingOption: string
 ): Option | undefined => {
-  const currentValue = setting.timing;
-  if (currentValue && currentValue !== '') {
+  const currentValue = {
+    hour: setting.hour,
+    dayOfWeek: setting.dayOfWeek,
+    dayOfMonth: setting.dayOfMonth,
+  };
+  if (currentValue && currentValue !== null) {
     const options =
-      NOTIFICATION_TIMING_OPTIONS[timingOption as 'timeOfDay' | 'dayOfWeek' | 'dayOfMonth'];
+      NOTIFICATION_TIMING_OPTIONS[timingOption as 'hour' | 'dayOfWeek' | 'dayOfMonth'];
 
-    if (timingOption === 'timeOfDay') {
-      const time = currentValue.split(':').pop();
-      return options.find((option) => option.value === time);
-    } else if (timingOption === 'dayOfWeek' || timingOption === 'dayOfMonth') {
-      const day = currentValue.split(':').shift();
-      return options.find((option) => option.value === day);
+    if (timingOption === 'hour') {
+      const time = currentValue.hour;
+      return options.find((option) => option.value === time?.toString());
+    } else if (timingOption === 'dayOfWeek') {
+      const day = currentValue.dayOfWeek;
+      return options.find((option) => option.value === day?.toString());
+    } else if (timingOption === 'dayOfMonth') {
+      const day = currentValue.dayOfMonth;
+      return options.find((option) => option.value === day?.toString());
     }
   }
 
@@ -569,7 +576,7 @@ const timingNotificationSettingsSection = (
       case NotificationType.daily:
         blocks.push({
           type: 'section',
-          block_id: `${setting.type}_timeOfDay`,
+          block_id: `${setting.type}_hour`,
           text: {
             type: 'mrkdwn',
             text: "The time of day you would like to receive a summary of your team's activity every week day.",
@@ -582,8 +589,8 @@ const timingNotificationSettingsSection = (
               text: 'Time of day',
               emoji: true,
             },
-            options: NOTIFICATION_TIMING_OPTIONS.timeOfDay,
-            initial_option: getNotificationTimingSelectedOptions(setting, 'timeOfDay'),
+            options: NOTIFICATION_TIMING_OPTIONS.hour,
+            initial_option: getNotificationTimingSelectedOptions(setting, 'hour'),
           },
         } as KnownBlock);
         break;
@@ -609,7 +616,7 @@ const timingNotificationSettingsSection = (
         } as KnownBlock);
         blocks.push({
           type: 'section',
-          block_id: `${setting.type}_timeOfDay`,
+          block_id: `${setting.type}_hour`,
           text: {
             type: 'mrkdwn',
             text: "The time of day you would like to receive a summary of your team's activity every week.",
@@ -622,8 +629,8 @@ const timingNotificationSettingsSection = (
               text: 'Time of day',
               emoji: true,
             },
-            options: NOTIFICATION_TIMING_OPTIONS.timeOfDay,
-            initial_option: getNotificationTimingSelectedOptions(setting, 'timeOfDay'),
+            options: NOTIFICATION_TIMING_OPTIONS.hour,
+            initial_option: getNotificationTimingSelectedOptions(setting, 'hour'),
           },
         } as KnownBlock);
         break;
@@ -649,7 +656,7 @@ const timingNotificationSettingsSection = (
         } as KnownBlock);
         blocks.push({
           type: 'section',
-          block_id: `${setting.type}_timeOfDay`,
+          block_id: `${setting.type}_hour`,
           text: {
             type: 'mrkdwn',
             text: "The time of day you would like to receive a summary of your team's activity every month.",
@@ -662,8 +669,8 @@ const timingNotificationSettingsSection = (
               text: 'Time of day',
               emoji: true,
             },
-            options: NOTIFICATION_TIMING_OPTIONS.timeOfDay,
-            initial_option: getNotificationTimingSelectedOptions(setting, 'timeOfDay'),
+            options: NOTIFICATION_TIMING_OPTIONS.hour,
+            initial_option: getNotificationTimingSelectedOptions(setting, 'hour'),
           },
         } as KnownBlock);
         break;

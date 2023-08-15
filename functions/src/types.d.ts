@@ -58,16 +58,16 @@ export type NotificationSettingsState = {
     notification_frequency: {
       notification_frequency: { type: string; selected_options: Option[] };
     };
-    daily_timeOfDay?: {
+    daily_hour?: {
       notification_timing: { type: string; selected_option: Option };
     };
-    weekly_timeOfDay?: {
+    weekly_hour?: {
       notification_timing: { type: string; selected_option: Option };
     };
     weekly_dayOfWeek?: {
       notification_timing: { type: string; selected_option: Option };
     };
-    monthly_timeOfDay?: {
+    monthly_hour?: {
       notification_timing: { type: string; selected_option: Option };
     };
     monthly_dayOfMonth?: {
@@ -81,9 +81,9 @@ export type Timing = {
 };
 
 export type GroupedOptions = {
-  daily: Array<{ timeOfDay?: string; dayOfWeek?: string }>;
-  weekly: Array<{ timeOfDay?: string; dayOfWeek?: string }>;
-  monthly: Array<{ timeOfDay?: string; dayOfMonth?: string }>;
+  daily: { hour?: string; dayOfWeek?: string };
+  weekly: { hour?: string; dayOfWeek?: string };
+  monthly: { hour?: string; dayOfMonth?: string };
 };
 
 export type GitHubUsernameSelectState = {

@@ -6,6 +6,7 @@ import {
   SayFn,
   HomeView,
   Context,
+  UserChangeEvent,
 } from '@slack/bolt';
 import { createAppHomeView } from './blocks';
 import * as logger from 'firebase-functions/logger';
@@ -103,4 +104,49 @@ export const appUninstalledHandler = async ({
       },
     },
   });
+};
+
+export const userChangeHandler = async ({
+  event,
+  context,
+}: {
+  event: UserChangeEvent;
+  context: Context;
+}) => {
+  logger.info('user_change', event, context, { structuredData: true });
+
+  const slackUser = event.user;
+
+  if (!slackUser) {
+    return;
+  }
+
+  const users = await prisma.user.findMany({
+    where: {
+      integrationAccounts: {
+        some: {
+          externalId: slackUser.id,
+          integrationName: INTEGRATION_NAMES.SLACK,
+        },
+      },
+    },
+  });
+
+  // Update user
+  await Promise.all(
+    users.map(async (user) => {
+      await prisma.user.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          name: slackUser.profile.real_name,
+          pictureUrl: slackUser.profile.image_512,
+          tz: slackUser.tz,
+          tzLabel: slackUser.tz_label,
+          tzOffset: slackUser.tz_offset,
+        },
+      });
+    })
+  );
 };

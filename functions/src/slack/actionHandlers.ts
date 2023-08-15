@@ -25,12 +25,6 @@ import {
   GitHubUsernameSelectState,
 } from '../types';
 
-const defaultTimingForNotificationType = {
-  [NotificationType.daily]: '8am',
-  [NotificationType.weekly]: 'friday:8am',
-  [NotificationType.monthly]: 'first:8am',
-};
-
 export const connectIntegrationHandler = async ({
   ack,
   context,
@@ -482,7 +476,6 @@ export const notificationFrequencyHandler = async ({
         create: {
           userId: user.id,
           type: notificationType,
-          timing: defaultTimingForNotificationType[notificationType],
           isEnabled: isEnabled,
         },
       });
@@ -500,7 +493,6 @@ export const notificationFrequencyHandler = async ({
       create: {
         userId: user.id,
         type: type as NotificationType,
-        timing: defaultTimingForNotificationType[type as NotificationType],
       },
     });
   });
@@ -539,9 +531,9 @@ export const notificationTimingHandler = async ({
     );
 
   const groupedOptions: GroupedOptions = {
-    daily: [],
-    weekly: [],
-    monthly: [],
+    daily: {},
+    weekly: {},
+    monthly: {},
   };
 
   // eslint-disable-next-line guard-for-in
@@ -550,45 +542,43 @@ export const notificationTimingHandler = async ({
     if (isTimingSetting(item)) {
       if (key.startsWith('daily')) {
         const newKey = key.replace('daily_', '');
-        groupedOptions.daily.push({
-          [newKey]: item.notification_timing.selected_option.value,
-        });
+        groupedOptions.daily[newKey as 'hour'] = item.notification_timing.selected_option.value;
       } else if (key.startsWith('weekly')) {
         const newKey = key.replace('weekly_', '');
-        groupedOptions.weekly.push({
-          [newKey]: item.notification_timing.selected_option.value,
-        });
+        groupedOptions.weekly[newKey as 'hour' | 'dayOfWeek'] =
+          item.notification_timing.selected_option.value;
       } else if (key.startsWith('monthly')) {
         const newKey = key.replace('monthly_', '');
-        groupedOptions.monthly.push({
-          [newKey]: item.notification_timing.selected_option.value,
-        });
+        groupedOptions.monthly[newKey as 'hour' | 'dayOfMonth'] =
+          item.notification_timing.selected_option.value;
       }
     }
   }
 
-  const notificationTimingValues: { daily?: string; weekly?: string; monthly?: string } = {};
+  const notificationTimingValues: {
+    daily?: { hour: number };
+    weekly?: { hour: number; dayOfWeek: number };
+    monthly?: { hour: number; dayOfMonth: number };
+  } = {};
 
-  if (groupedOptions.daily.length) {
-    notificationTimingValues.daily = groupedOptions.daily[0].timeOfDay;
+  if (groupedOptions.daily.hour) {
+    notificationTimingValues.daily = {
+      hour: parseInt(groupedOptions.daily.hour as string),
+    };
   }
 
-  if (groupedOptions.weekly.length) {
-    const weeklyParts: string[] = [];
-    for (const item of groupedOptions.weekly) {
-      if (item.dayOfWeek) weeklyParts.push(item.dayOfWeek);
-      if (item.timeOfDay) weeklyParts.push(item.timeOfDay);
-    }
-    notificationTimingValues.weekly = weeklyParts.join(':');
+  if (groupedOptions.weekly.hour || groupedOptions.weekly.dayOfWeek) {
+    notificationTimingValues.weekly = {
+      hour: parseInt(groupedOptions.weekly.hour as string),
+      dayOfWeek: parseInt(groupedOptions.weekly.dayOfWeek as string),
+    };
   }
 
-  if (groupedOptions.monthly.length) {
-    const monthlyParts: string[] = [];
-    for (const item of groupedOptions.monthly) {
-      if (item.dayOfMonth) monthlyParts.push(item.dayOfMonth);
-      if (item.timeOfDay) monthlyParts.push(item.timeOfDay);
-    }
-    notificationTimingValues.monthly = monthlyParts.join(':');
+  if (groupedOptions.monthly) {
+    notificationTimingValues.monthly = {
+      hour: parseInt(groupedOptions.monthly.hour as string),
+      dayOfMonth: parseInt(groupedOptions.monthly.dayOfMonth as string),
+    };
   }
 
   const { userId: slackUserId, teamId: slackOrgId } = context;
@@ -618,12 +608,12 @@ export const notificationTimingHandler = async ({
         },
       },
       update: {
-        timing: notificationTimingValues[type],
+        ...notificationTimingValues[type],
       },
       create: {
         userId: user.id,
         type: type as NotificationType,
-        timing: notificationTimingValues[type] || defaultTimingForNotificationType[type],
+        ...notificationTimingValues[type],
       },
     });
   });

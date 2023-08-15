@@ -6,6 +6,7 @@ import {
   appUninstalledHandler,
   appMentionHandler,
   appDirectMessageHandler,
+  userChangeHandler,
 } from './eventHandlers';
 import {
   connectIntegrationHandler,
@@ -62,6 +63,7 @@ app.event('app_home_opened', appHomeOpenedHandler);
 app.event('app_mention', appMentionHandler);
 app.event('message', appDirectMessageHandler);
 app.event('app_uninstalled', appUninstalledHandler);
+app.event('user_change', userChangeHandler);
 // Action listeners
 app.action('connect_integration', connectIntegrationHandler);
 app.action('show_create_team', showCreateTeamHandler);
