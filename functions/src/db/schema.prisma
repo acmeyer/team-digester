@@ -32,6 +32,7 @@ model User {
   addedTeamMemberships TeamMembership[]      @relation("AddedTeamMembers")
   notificationSettings NotificationSetting[]
   activities           Activity[]
+  activitySummaries    ActivitySummary[]
 }
 
 model NotificationSetting {
@@ -76,9 +77,10 @@ model Team {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  members      TeamMembership[]
-  activities   Activity[]
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members           TeamMembership[]
+  activities        Activity[]
+  activitySummaries ActivitySummary[]
 }
 
 model TeamMembership {
@@ -161,7 +163,21 @@ model Activity {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   teams        Team[]
-  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  summaries    ActivitySummary[]
+}
+
+model ActivitySummary {
+  id        String   @id @default(dbgenerated("nanoid(14)"))
+  summary   String?
+  teamId    String
+  forUserId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities Activity[]
+  team       Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  forUser    User       @relation(fields: [forUserId], references: [id], onDelete: Cascade)
 }

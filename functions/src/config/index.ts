@@ -1,6 +1,10 @@
 import 'dotenv/config';
 
 export const Config = {
+  // OpenAI
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY as string,
+  OPENAI_API_ORG_ID: process.env.OPENAI_API_ORG_ID as string,
+
   // Slack
   SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID as string,
   SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET as string,
