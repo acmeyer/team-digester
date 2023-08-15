@@ -57,24 +57,40 @@ export const getNotificationSettingValues = ({
 
   if (type === NotificationType.daily) {
     const tzOffset = user.tzOffset || 0;
+    let hourUTC = hour - tzOffset / 60;
+    let dailyUTCOffset = 0;
+    // Adjust for UTC offset
+    if (hourUTC < 0) {
+      hourUTC += 24;
+      dailyUTCOffset = -1;
+    } else if (hourUTC > 23) {
+      hourUTC -= 24;
+      dailyUTCOffset = 1;
+    }
 
     notificationTimingValues.daily = {
       hour,
-      hourUTC: hour - tzOffset / 60,
+      hourUTC,
+      dailyUTCOffset,
     };
   }
 
   if (type === NotificationType.weekly) {
     const tzOffset = user.tzOffset || 0;
-    const localDate = new Date();
-    localDate.setUTCHours(hour - tzOffset / 60);
-    localDate.setUTCDate(localDate.getUTCDate() + ((dayOfWeek - localDate.getUTCDay() + 7) % 7));
-
-    const utcDayOfWeek = localDate.getUTCDay();
+    let hourUTC = hour - tzOffset / 60;
+    let utcDayOfWeek = dayOfWeek;
+    // Adjust for UTC offset
+    if (hourUTC < 0) {
+      hourUTC += 24;
+      utcDayOfWeek = utcDayOfWeek - 1 < 0 ? 6 : utcDayOfWeek - 1;
+    } else if (hourUTC > 23) {
+      hourUTC -= 24;
+      utcDayOfWeek = utcDayOfWeek + 1 > 6 ? 0 : utcDayOfWeek + 1;
+    }
 
     notificationTimingValues.weekly = {
       hour,
-      hourUTC: hour - tzOffset / 60,
+      hourUTC,
       dayOfWeek,
       dayOfWeekUTC: utcDayOfWeek,
     };
@@ -82,15 +98,22 @@ export const getNotificationSettingValues = ({
 
   if (type === NotificationType.monthly) {
     const tzOffset = user.tzOffset || 0;
-    const localDate = new Date();
-    localDate.setUTCHours(hour - tzOffset / 60);
-    localDate.setUTCDate(dayOfMonth);
-
-    const utcDayOfMonth = localDate.getUTCDate();
+    let hourUTC = hour - tzOffset / 60;
+    let utcDayOfMonth = dayOfMonth;
+    // Adjust for UTC offset
+    // The dayOfMonth setting is only 1 for the 1st of month and -1 for the last day of the month
+    // Therefore, we have to adjust the dayOfMonth setting based on the hourUTC accordingly
+    if (hourUTC < 0) {
+      hourUTC += 24;
+      utcDayOfMonth = utcDayOfMonth - 1 === 0 ? -1 : utcDayOfMonth - 1;
+    } else if (hourUTC > 23) {
+      hourUTC -= 24;
+      utcDayOfMonth = utcDayOfMonth + 1 === 0 ? 1 : utcDayOfMonth + 1;
+    }
 
     notificationTimingValues.monthly = {
       hour,
-      hourUTC: hour - tzOffset / 60,
+      hourUTC,
       dayOfMonth,
       dayOfMonthUTC: utcDayOfMonth,
     };

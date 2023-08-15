@@ -106,7 +106,7 @@ export type TeamFormState = {
 export type TeamFormValues = TeamFormState['values'];
 
 export type NotificationTimingValues = {
-  daily?: { hour: number; hourUTC: number };
+  daily?: { hour: number; hourUTC: number; dailyUTCOffset: number };
   weekly?: { hour: number; hourUTC: number; dayOfWeek: number; dayOfWeekUTC: number };
   monthly?: { hour: number; hourUTC: number; dayOfMonth: number; dayOfMonthUTC: number };
 };

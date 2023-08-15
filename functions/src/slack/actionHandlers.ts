@@ -593,7 +593,7 @@ export const notificationTimingHandler = async ({
       user,
       type: NotificationType.daily,
       hour,
-    });
+    }) as NotificationTimingValues['daily'];
   }
 
   if (groupedOptions.weekly.hour || groupedOptions.weekly.dayOfWeek) {

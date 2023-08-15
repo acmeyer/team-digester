@@ -12,7 +12,25 @@ export const notifications = onSchedule('0 * * * *', async (event) => {
   const localDate = new Date();
   const utcHour = localDate.getUTCHours();
   const utcDayOfWeek = localDate.getUTCDay();
-  const utcDayOfMonth = localDate.getUTCDate();
+  let dailyOffset = 0;
+  if (utcDayOfWeek === 0) {
+    dailyOffset = 1;
+  } else if (utcDayOfWeek === 6) {
+    dailyOffset = -1;
+  }
+  let utcDayOfMonth = localDate.getUTCDate();
+  // Convert utcDayOfMonth to days from the end of the month if > 2
+  // If the day of the month is greater than 2, then only the end of the month is relevant
+  // for monthly notifications
+  if (utcDayOfMonth > 2) {
+    const daysInMonth = new Date(
+      localDate.getUTCFullYear(),
+      localDate.getUTCMonth() + 1,
+      0
+    ).getUTCDate();
+    // Keep it negative to match how we store it
+    utcDayOfMonth = utcDayOfMonth - daysInMonth;
+  }
 
   console.log('finding notifications', {
     utcHour,
@@ -26,6 +44,7 @@ export const notifications = onSchedule('0 * * * *', async (event) => {
         isEnabled: true,
         type: NotificationType.daily,
         hourUTC: utcHour,
+        dailyUTCOffset: dailyOffset,
       },
       include: { user: true },
     });
