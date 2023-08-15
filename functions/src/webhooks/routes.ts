@@ -203,7 +203,7 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
   const { commits, repository, sender } = payload;
 
   // Get installation, organization, integration account, and user
-  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
     payload,
     webhook
   );
@@ -226,6 +226,15 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
   );
 
   // Store the activity
+  const userWithTeams = await prisma.user.findUnique({
+    where: {
+      id: user?.id,
+    },
+    include: {
+      teamMemberships: true,
+    },
+  });
+
   await prisma.activity.create({
     data: {
       organizationId: integrationInstallation.organizationId as string,
@@ -243,6 +252,11 @@ Commit(s):
         repository,
         sender,
       } as unknown as Prisma.JsonObject,
+      teams: {
+        connect: userWithTeams?.teamMemberships.map((membership) => ({
+          id: membership.teamId,
+        })),
+      },
     },
   });
 
@@ -285,12 +299,21 @@ githubWebhooks.on('pull_request', async ({ id, name, payload }) => {
     payload,
   });
 
-  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
     payload,
     webhook
   );
 
   // Store the activity
+  const userWithTeams = await prisma.user.findUnique({
+    where: {
+      id: user?.id,
+    },
+    include: {
+      teamMemberships: true,
+    },
+  });
+
   await prisma.activity.create({
     data: {
       organizationId: integrationInstallation.organizationId as string,
@@ -310,6 +333,11 @@ Details:
         repository,
         sender,
       } as unknown as Prisma.JsonObject,
+      teams: {
+        connect: userWithTeams?.teamMemberships.map((membership) => ({
+          id: membership.teamId,
+        })),
+      },
     },
   });
 
@@ -342,12 +370,21 @@ githubWebhooks.on('pull_request_review_comment', async ({ id, name, payload }) =
     payload,
   });
 
-  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
     payload,
     webhook
   );
 
   // Store the activity
+  const userWithTeams = await prisma.user.findUnique({
+    where: {
+      id: user?.id,
+    },
+    include: {
+      teamMemberships: true,
+    },
+  });
+
   await prisma.activity.create({
     data: {
       organizationId: integrationInstallation.organizationId as string,
@@ -370,6 +407,11 @@ Details:
         comment,
         sender,
       } as unknown as Prisma.JsonObject,
+      teams: {
+        connect: userWithTeams?.teamMemberships.map((membership) => ({
+          id: membership.teamId,
+        })),
+      },
     },
   });
 
@@ -395,12 +437,21 @@ githubWebhooks.on('pull_request_review', async ({ id, name, payload }) => {
     payload,
   });
 
-  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
     payload,
     webhook
   );
 
   // Store the activity
+  const userWithTeams = await prisma.user.findUnique({
+    where: {
+      id: user?.id,
+    },
+    include: {
+      teamMemberships: true,
+    },
+  });
+
   await prisma.activity.create({
     data: {
       organizationId: integrationInstallation.organizationId as string,
@@ -421,6 +472,11 @@ Details:
         review,
         sender,
       } as unknown as Prisma.JsonObject,
+      teams: {
+        connect: userWithTeams?.teamMemberships.map((membership) => ({
+          id: membership.teamId,
+        })),
+      },
     },
   });
 
@@ -446,12 +502,21 @@ githubWebhooks.on('pull_request_review_thread', async ({ id, name, payload }) =>
     payload,
   });
 
-  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
     payload,
     webhook
   );
 
   // Store the activity
+  const userWithTeams = await prisma.user.findUnique({
+    where: {
+      id: user?.id,
+    },
+    include: {
+      teamMemberships: true,
+    },
+  });
+
   await prisma.activity.create({
     data: {
       organizationId: integrationInstallation.organizationId as string,
@@ -470,6 +535,11 @@ Activity: ${sender.login} ${action} a pull request review on #${pullRequest.numb
         repository,
         sender,
       } as unknown as Prisma.JsonObject,
+      teams: {
+        connect: userWithTeams?.teamMemberships.map((membership) => ({
+          id: membership.teamId,
+        })),
+      },
     },
   });
 
@@ -495,12 +565,21 @@ githubWebhooks.on('release', async ({ id, name, payload }) => {
     payload,
   });
 
-  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
     payload,
     webhook
   );
 
   // Store the activity
+  const userWithTeams = await prisma.user.findUnique({
+    where: {
+      id: user?.id,
+    },
+    include: {
+      teamMemberships: true,
+    },
+  });
+
   await prisma.activity.create({
     data: {
       organizationId: integrationInstallation.organizationId as string,
@@ -518,6 +597,11 @@ Details:
         repository,
         sender,
       } as unknown as Prisma.JsonObject,
+      teams: {
+        connect: userWithTeams?.teamMemberships.map((membership) => ({
+          id: membership.teamId,
+        })),
+      },
     },
   });
 
@@ -543,12 +627,21 @@ githubWebhooks.on('issue_comment', async ({ id, name, payload }) => {
     payload,
   });
 
-  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
     payload,
     webhook
   );
 
   // Store the activity
+  const userWithTeams = await prisma.user.findUnique({
+    where: {
+      id: user?.id,
+    },
+    include: {
+      teamMemberships: true,
+    },
+  });
+
   await prisma.activity.create({
     data: {
       organizationId: integrationInstallation.organizationId as string,
@@ -572,6 +665,11 @@ Details:
         repository,
         sender,
       } as unknown as Prisma.JsonObject,
+      teams: {
+        connect: userWithTeams?.teamMemberships.map((membership) => ({
+          id: membership.teamId,
+        })),
+      },
     },
   });
 
@@ -597,12 +695,21 @@ githubWebhooks.on('issues', async ({ id, name, payload }) => {
     payload,
   });
 
-  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
     payload,
     webhook
   );
 
   // Store the activity
+  const userWithTeams = await prisma.user.findUnique({
+    where: {
+      id: user?.id,
+    },
+    include: {
+      teamMemberships: true,
+    },
+  });
+
   await prisma.activity.create({
     data: {
       organizationId: integrationInstallation.organizationId as string,
@@ -622,6 +729,11 @@ githubWebhooks.on('issues', async ({ id, name, payload }) => {
         repository,
         sender,
       } as unknown as Prisma.JsonObject,
+      teams: {
+        connect: userWithTeams?.teamMemberships.map((membership) => ({
+          id: membership.teamId,
+        })),
+      },
     },
   });
 
@@ -647,12 +759,21 @@ githubWebhooks.on('commit_comment', async ({ id, name, payload }) => {
     payload,
   });
 
-  const { integrationAccount, integrationInstallation } = await getAccountsForWebhook(
+  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
     payload,
     webhook
   );
 
   // Store the activity
+  const userWithTeams = await prisma.user.findUnique({
+    where: {
+      id: user?.id,
+    },
+    include: {
+      teamMemberships: true,
+    },
+  });
+
   await prisma.activity.create({
     data: {
       organizationId: integrationInstallation.organizationId as string,
@@ -670,6 +791,11 @@ Details:
         repository,
         sender,
       } as unknown as Prisma.JsonObject,
+      teams: {
+        connect: userWithTeams?.teamMemberships.map((membership) => ({
+          id: membership.teamId,
+        })),
+      },
     },
   });
 

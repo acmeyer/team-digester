@@ -36,6 +36,7 @@ export const notifications = onSchedule('0 * * * *', async (event) => {
     utcHour,
     utcDayOfWeek,
     utcDayOfMonth,
+    dailyOffset,
   });
 
   try {
@@ -84,7 +85,13 @@ export const notifications = onSchedule('0 * * * *', async (event) => {
     await Promise.all(
       allNotifications.map((notification) => {
         console.log(`Sending ${notification.type} notification to`, notification.user);
-        // Add your notification sending logic here
+
+        // Send notifications:
+        // - daily: for each of user's teams, find each team member activity since last notification
+        // (24 hours typically, except over weekends)
+        // - weekly: for each of user's teams, find each team member activity since last notification (7 days)
+        // - monthly: for each of user's teams, find each team member activity since last notification
+        // (28/29/30/31 days depending on month and year)
       })
     );
 
