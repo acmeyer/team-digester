@@ -218,7 +218,7 @@ const sendNotification = async ({
             content: `Please summarize the following activities for this particular team member.
 
 Team Member: ${member.user.name}
-Activities: ${activity.map((a) => a.summary).join('\n\n- ')}`,
+Activities: ${activity.map((a) => a.summary).join('\n\n* ')}`,
           },
         ],
         temperature: 0,
@@ -252,9 +252,9 @@ Activities: ${activity.map((a) => a.summary).join('\n\n- ')}`,
       {
         role: 'user',
         // eslint-disable-next-line max-len
-        content: `Please summarize the following activities for a team. This message will be sent to each team member. Use Slack mrkdwn for styling and formatting.
+        content: `Please summarize the following activities for a team. This message will be sent to each team member.
 
-Activities: ${teamActivity.map((a) => a.summary).join('\n\n- ')}`,
+Activities: ${teamActivity.map((a) => a.summary).join('\n\n* ')}`,
       },
     ],
     temperature: 0,
