@@ -16,21 +16,9 @@ import {
   CommitCommentCreatedEvent,
 } from '@octokit/webhooks-types';
 import { IncomingWebhook, Prisma } from '@prisma/client';
-import { components } from '@octokit/openapi-types';
 import { INTEGRATION_NAMES } from '../lib/constants';
-import {
-  getInstallationAuth,
-  githubApiRequestWithRetry,
-  getCommitDetailsMessage,
-  getPullRequestDetailsMessage,
-  getPullRequestCommentDetailsMessage,
-  getPullRequestReviewDetailsMessage,
-  getReleaseDetailsMessage,
-  getIssueCommentDetailsMessage,
-  getIssueDetailsMessage,
-  getCommitCommentDetailsMessage,
-} from '../lib/github';
-import { saveIncomingWebhook } from './utils';
+import { getInstallationAuth, githubApiRequestWithRetry } from '../lib/github';
+import { saveActvity, saveIncomingWebhook } from './utils';
 
 const githubWebhooks = new Webhooks({
   secret: Config.GITHUB_WEBHOOK_SECRET,
@@ -201,12 +189,7 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
   });
 
   const { commits, repository, sender } = payload;
-
-  // Get installation, organization, integration account, and user
-  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
-    payload,
-    webhook
-  );
+  const { integrationInstallation, user } = await getAccountsForWebhook(payload, webhook);
 
   // Get the details of each commit
   // https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#get-a-commit
@@ -226,37 +209,15 @@ githubWebhooks.on('push', async ({ id, name, payload }) => {
   );
 
   // Store the activity
-  const userWithTeams = await prisma.user.findUnique({
-    where: {
-      id: user?.id,
-    },
-    include: {
-      teamMemberships: true,
-    },
-  });
-
-  await prisma.activity.create({
-    data: {
-      organizationId: integrationInstallation.organizationId as string,
-      userId: integrationAccount?.userId as string,
-      activityMessage: `Event: ${name}
-Source: ${INTEGRATION_NAMES.GITHUB}
-Activity: ${sender.login} pushed ${commits.length} commit(s) to ${repository.name}
-Commit(s): 
-  ${commitDetails.map((commit) => getCommitDetailsMessage(commit)).join('\n')}`,
-      activityDate: new Date(),
-      activityData: {
-        event: name,
-        commits,
-        commitDetails,
-        repository,
-        sender,
-      } as unknown as Prisma.JsonObject,
-      teams: {
-        connect: userWithTeams?.teamMemberships.map((membership) => ({
-          id: membership.teamId,
-        })),
-      },
+  await saveActvity({
+    userId: user?.id,
+    organizationId: integrationInstallation.organizationId as string,
+    eventData: {
+      event: name,
+      commits,
+      commitDetails,
+      repository,
+      sender,
     },
   });
 
@@ -299,45 +260,18 @@ githubWebhooks.on('pull_request', async ({ id, name, payload }) => {
     payload,
   });
 
-  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
-    payload,
-    webhook
-  );
+  const { integrationInstallation, user } = await getAccountsForWebhook(payload, webhook);
 
   // Store the activity
-  const userWithTeams = await prisma.user.findUnique({
-    where: {
-      id: user?.id,
-    },
-    include: {
-      teamMemberships: true,
-    },
-  });
-
-  await prisma.activity.create({
-    data: {
-      organizationId: integrationInstallation.organizationId as string,
-      userId: integrationAccount?.userId as string,
-      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
-Source: ${INTEGRATION_NAMES.GITHUB}
-Activity: ${sender.login} ${action} pull request #${pullRequest.number} "${
-        pullRequest.title
-      }" for the ${repository.name} repo
-Details:
-  ${getPullRequestDetailsMessage(pullRequest as components['schemas']['pull-request'])}`,
-      activityDate: new Date(),
-      activityData: {
-        event: name,
-        action,
-        pullRequest,
-        repository,
-        sender,
-      } as unknown as Prisma.JsonObject,
-      teams: {
-        connect: userWithTeams?.teamMemberships.map((membership) => ({
-          id: membership.teamId,
-        })),
-      },
+  await saveActvity({
+    userId: user?.id,
+    organizationId: integrationInstallation.organizationId as string,
+    eventData: {
+      event: name,
+      action,
+      pullRequest,
+      repository,
+      sender,
     },
   });
 
@@ -369,49 +303,19 @@ githubWebhooks.on('pull_request_review_comment', async ({ id, name, payload }) =
     source: INTEGRATION_NAMES.GITHUB,
     payload,
   });
-
-  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
-    payload,
-    webhook
-  );
+  const { integrationInstallation, user } = await getAccountsForWebhook(payload, webhook);
 
   // Store the activity
-  const userWithTeams = await prisma.user.findUnique({
-    where: {
-      id: user?.id,
-    },
-    include: {
-      teamMemberships: true,
-    },
-  });
-
-  await prisma.activity.create({
-    data: {
-      organizationId: integrationInstallation.organizationId as string,
-      userId: integrationAccount?.userId as string,
-      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
-Source: ${INTEGRATION_NAMES.GITHUB}
-Activity: ${sender.login} ${action} pull request review comment on #${pullRequest.number} "${
-        pullRequest.title
-      }" for the ${repository.name} repo
-Details:
-  ${getPullRequestCommentDetailsMessage(
-    comment as components['schemas']['pull-request-review-comment']
-  )}`,
-      activityDate: new Date(),
-      activityData: {
-        event: name,
-        action,
-        pullRequest,
-        repository,
-        comment,
-        sender,
-      } as unknown as Prisma.JsonObject,
-      teams: {
-        connect: userWithTeams?.teamMemberships.map((membership) => ({
-          id: membership.teamId,
-        })),
-      },
+  await saveActvity({
+    userId: user?.id,
+    organizationId: integrationInstallation.organizationId as string,
+    eventData: {
+      event: name,
+      action,
+      pullRequest,
+      repository,
+      comment,
+      sender,
     },
   });
 
@@ -436,47 +340,19 @@ githubWebhooks.on('pull_request_review', async ({ id, name, payload }) => {
     source: INTEGRATION_NAMES.GITHUB,
     payload,
   });
-
-  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
-    payload,
-    webhook
-  );
+  const { integrationInstallation, user } = await getAccountsForWebhook(payload, webhook);
 
   // Store the activity
-  const userWithTeams = await prisma.user.findUnique({
-    where: {
-      id: user?.id,
-    },
-    include: {
-      teamMemberships: true,
-    },
-  });
-
-  await prisma.activity.create({
-    data: {
-      organizationId: integrationInstallation.organizationId as string,
-      userId: integrationAccount?.userId as string,
-      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
-Source: ${INTEGRATION_NAMES.GITHUB}
-Activity: ${sender.login} ${action} a pull request review on #${pullRequest.number} "${
-        pullRequest.title
-      }" for the ${repository.name} repo
-Details:
-  ${getPullRequestReviewDetailsMessage(review as components['schemas']['pull-request-review'])}`,
-      activityDate: new Date(),
-      activityData: {
-        event: name,
-        action,
-        pullRequest,
-        repository,
-        review,
-        sender,
-      } as unknown as Prisma.JsonObject,
-      teams: {
-        connect: userWithTeams?.teamMemberships.map((membership) => ({
-          id: membership.teamId,
-        })),
-      },
+  await saveActvity({
+    userId: user?.id,
+    organizationId: integrationInstallation.organizationId as string,
+    eventData: {
+      event: name,
+      action,
+      pullRequest,
+      repository,
+      review,
+      sender,
     },
   });
 
@@ -502,44 +378,19 @@ githubWebhooks.on('pull_request_review_thread', async ({ id, name, payload }) =>
     payload,
   });
 
-  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
-    payload,
-    webhook
-  );
+  const { integrationInstallation, user } = await getAccountsForWebhook(payload, webhook);
 
   // Store the activity
-  const userWithTeams = await prisma.user.findUnique({
-    where: {
-      id: user?.id,
-    },
-    include: {
-      teamMemberships: true,
-    },
-  });
-
-  await prisma.activity.create({
-    data: {
-      organizationId: integrationInstallation.organizationId as string,
-      userId: integrationAccount?.userId as string,
-      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
-Source: ${INTEGRATION_NAMES.GITHUB}
-Activity: ${sender.login} ${action} a pull request review on #${pullRequest.number} "${
-        pullRequest.title
-      }" for the ${repository.name} repo`,
-      activityDate: new Date(),
-      activityData: {
-        event: name,
-        action,
-        pullRequest,
-        thread,
-        repository,
-        sender,
-      } as unknown as Prisma.JsonObject,
-      teams: {
-        connect: userWithTeams?.teamMemberships.map((membership) => ({
-          id: membership.teamId,
-        })),
-      },
+  await saveActvity({
+    userId: user?.id,
+    organizationId: integrationInstallation.organizationId as string,
+    eventData: {
+      event: name,
+      action,
+      pullRequest,
+      thread,
+      repository,
+      sender,
     },
   });
 
@@ -564,44 +415,18 @@ githubWebhooks.on('release', async ({ id, name, payload }) => {
     source: INTEGRATION_NAMES.GITHUB,
     payload,
   });
-
-  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
-    payload,
-    webhook
-  );
+  const { integrationInstallation, user } = await getAccountsForWebhook(payload, webhook);
 
   // Store the activity
-  const userWithTeams = await prisma.user.findUnique({
-    where: {
-      id: user?.id,
-    },
-    include: {
-      teamMemberships: true,
-    },
-  });
-
-  await prisma.activity.create({
-    data: {
-      organizationId: integrationInstallation.organizationId as string,
-      userId: integrationAccount?.userId as string,
-      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
-Source: ${INTEGRATION_NAMES.GITHUB}
-Activity: ${sender.login} ${action} a release on the ${repository.name} repo
-Details:
-  ${getReleaseDetailsMessage(release as components['schemas']['release'])}`,
-      activityDate: new Date(),
-      activityData: {
-        event: name,
-        action,
-        release,
-        repository,
-        sender,
-      } as unknown as Prisma.JsonObject,
-      teams: {
-        connect: userWithTeams?.teamMemberships.map((membership) => ({
-          id: membership.teamId,
-        })),
-      },
+  await saveActvity({
+    userId: user?.id,
+    organizationId: integrationInstallation.organizationId as string,
+    eventData: {
+      event: name,
+      action,
+      release,
+      repository,
+      sender,
     },
   });
 
@@ -626,50 +451,19 @@ githubWebhooks.on('issue_comment', async ({ id, name, payload }) => {
     source: INTEGRATION_NAMES.GITHUB,
     payload,
   });
-
-  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
-    payload,
-    webhook
-  );
+  const { integrationInstallation, user } = await getAccountsForWebhook(payload, webhook);
 
   // Store the activity
-  const userWithTeams = await prisma.user.findUnique({
-    where: {
-      id: user?.id,
-    },
-    include: {
-      teamMemberships: true,
-    },
-  });
-
-  await prisma.activity.create({
-    data: {
-      organizationId: integrationInstallation.organizationId as string,
-      userId: integrationAccount?.userId as string,
-      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
-Source: ${INTEGRATION_NAMES.GITHUB}
-Activity: ${sender.login} ${action} an issue comment on the #${issue.number} issue ${
-        issue.title
-      } for the ${repository.name} repo
-Details:
-  ${getIssueCommentDetailsMessage(
-    issue as components['schemas']['issue'],
-    comment as components['schemas']['issue-comment']
-  )}`,
-      activityDate: new Date(),
-      activityData: {
-        event: name,
-        action,
-        issue,
-        comment,
-        repository,
-        sender,
-      } as unknown as Prisma.JsonObject,
-      teams: {
-        connect: userWithTeams?.teamMemberships.map((membership) => ({
-          id: membership.teamId,
-        })),
-      },
+  await saveActvity({
+    userId: user?.id,
+    organizationId: integrationInstallation.organizationId as string,
+    eventData: {
+      event: name,
+      action,
+      issue,
+      comment,
+      repository,
+      sender,
     },
   });
 
@@ -694,46 +488,18 @@ githubWebhooks.on('issues', async ({ id, name, payload }) => {
     source: INTEGRATION_NAMES.GITHUB,
     payload,
   });
-
-  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
-    payload,
-    webhook
-  );
+  const { integrationInstallation, user } = await getAccountsForWebhook(payload, webhook);
 
   // Store the activity
-  const userWithTeams = await prisma.user.findUnique({
-    where: {
-      id: user?.id,
-    },
-    include: {
-      teamMemberships: true,
-    },
-  });
-
-  await prisma.activity.create({
-    data: {
-      organizationId: integrationInstallation.organizationId as string,
-      userId: integrationAccount?.userId as string,
-      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
-  Source: ${INTEGRATION_NAMES.GITHUB}
-  Activity: ${sender.login} ${action} an issue comment on the #${issue.number} issue ${
-        issue.title
-      } for the ${repository.name} repo
-  Details:
-    ${getIssueDetailsMessage(issue as components['schemas']['issue'])}`,
-      activityDate: new Date(),
-      activityData: {
-        event: name,
-        action,
-        issue,
-        repository,
-        sender,
-      } as unknown as Prisma.JsonObject,
-      teams: {
-        connect: userWithTeams?.teamMemberships.map((membership) => ({
-          id: membership.teamId,
-        })),
-      },
+  await saveActvity({
+    userId: user?.id,
+    organizationId: integrationInstallation.organizationId as string,
+    eventData: {
+      event: name,
+      action,
+      issue,
+      repository,
+      sender,
     },
   });
 
@@ -758,44 +524,18 @@ githubWebhooks.on('commit_comment', async ({ id, name, payload }) => {
     source: INTEGRATION_NAMES.GITHUB,
     payload,
   });
-
-  const { integrationAccount, integrationInstallation, user } = await getAccountsForWebhook(
-    payload,
-    webhook
-  );
+  const { integrationInstallation, user } = await getAccountsForWebhook(payload, webhook);
 
   // Store the activity
-  const userWithTeams = await prisma.user.findUnique({
-    where: {
-      id: user?.id,
-    },
-    include: {
-      teamMemberships: true,
-    },
-  });
-
-  await prisma.activity.create({
-    data: {
-      organizationId: integrationInstallation.organizationId as string,
-      userId: integrationAccount?.userId as string,
-      activityMessage: `Event: ${name}${action ? ` (${action})` : ''}
-Source: ${INTEGRATION_NAMES.GITHUB}
-Activity: ${sender.login} ${action} a commit comment on the ${repository.name} repo
-Details:
-  ${getCommitCommentDetailsMessage(comment as components['schemas']['commit-comment'])}`,
-      activityDate: new Date(),
-      activityData: {
-        event: name,
-        action,
-        comment,
-        repository,
-        sender,
-      } as unknown as Prisma.JsonObject,
-      teams: {
-        connect: userWithTeams?.teamMemberships.map((membership) => ({
-          id: membership.teamId,
-        })),
-      },
+  await saveActvity({
+    userId: user?.id,
+    organizationId: integrationInstallation.organizationId as string,
+    eventData: {
+      event: name,
+      action,
+      comment,
+      repository,
+      sender,
     },
   });
 

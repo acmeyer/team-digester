@@ -194,7 +194,7 @@ const sendNotification = async ({
 
       // Send activity to OpenAI for summarization
       const chatCompletion = await openAI.chat.completions.create({
-        model: 'gpt4',
+        model: 'gpt-4',
         messages: [
           {
             role: 'system',
@@ -203,10 +203,10 @@ const sendNotification = async ({
           {
             role: 'user',
             // eslint-disable-next-line max-len
-            content: `Please summarize the following activities for this particular team member. In your summary, include the team member's name.
+            content: `Please summarize the following activities for this particular team member. If there are code changes, summarize what the code changes do.
 
 Team Member: ${member.user.name}
-Activities: ${activity.map((a) => a.activityMessage).join('\n')}`,
+Activities: ${activity.map((a) => a.summary).join('\n')}`,
           },
         ],
         temperature: 0,

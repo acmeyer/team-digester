@@ -155,7 +155,8 @@ model IncomingWebhook {
 
 model Activity {
   id              String   @id @default(dbgenerated("nanoid(14)"))
-  activityMessage String
+  activityMessage String?
+  summary         String?
   activityData    Json?
   activityDate    DateTime
   userId          String?
