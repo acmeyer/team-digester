@@ -252,7 +252,7 @@ Activities: ${activity.map((a) => a.summary).join('\n\n- ')}`,
       {
         role: 'user',
         // eslint-disable-next-line max-len
-        content: `Please summarize the following activities for a team. This message will be sent to each team member.
+        content: `Please summarize the following activities for a team. This message will be sent to each team member. Use markdown for styling and formatting.
 
 Activities: ${teamActivity.map((a) => a.summary).join('\n\n- ')}`,
       },
@@ -261,7 +261,7 @@ Activities: ${teamActivity.map((a) => a.summary).join('\n\n- ')}`,
   });
   const activitySummaryMessage = chatCompletion.choices[0].message.content;
 
-  const updateMessage = `Here's your ${capitalize(notificationType)} update for ${team.name}:
+  const updateMessage = `Here's your ${capitalize(notificationType)} update for *${team.name}*:
   
 ${activitySummaryMessage}`;
 
