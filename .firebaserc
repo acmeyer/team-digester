@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "default": "team-digester",
+    "development": "team-digester-dev",
+    "production": "team-digester"
+  },
+  "targets": {},
+  "etags": {}
+}

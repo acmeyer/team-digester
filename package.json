@@ -1,0 +1,10 @@
+{
+  "name": "team-digester",
+  "version": "1.0.0",
+  "description": "Stay in sync with what your team is doing, automatically.",
+  "repository": "git@github.com:acmeyer/team-digester.git",
+  "author": "Alex Meyer <acomeyer@gmail.com>",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {}
+}

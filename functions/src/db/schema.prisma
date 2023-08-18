@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  directUrl         = env("DIRECT_URL")
+  // https://neon.tech/docs/guides/prisma-migrate#configure-a-shadow-database-for-prisma-migrate
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+enum NotificationType {
+  daily
+  weekly
+  monthly
+}
+
+model User {
+  id         String   @id @default(dbgenerated("nanoid(14)"))
+  name       String?
+  firstName  String?
+  lastName   String?
+  email      String?
+  pictureUrl String?
+  tz         String?  @default("America/Chicago")
+  tzLabel    String?  @default("Central Daylight Time")
+  tzOffset   Int?     @default(-300) // Indicates the number of minutes to offset UTC time by for this user's tz.
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  organizations        Organization[]
+  integrationAccounts  IntegrationAccount[]
+  teamMemberships      TeamMembership[]      @relation("TeamMemberships")
+  addedTeamMemberships TeamMembership[]      @relation("AddedTeamMembers")
+  notificationSettings NotificationSetting[]
+  activities           Activity[]
+  activitiesSummaries  ActivitiesSummary[]
+  teamUpdateMessages   TeamUpdateMessage[]
+}
+
+model NotificationSetting {
+  id             String           @id @default(dbgenerated("nanoid(14)"))
+  userId         String
+  type           NotificationType
+  dayOfWeek      Int?             @default(5)
+  dayOfWeekUTC   Int?
+  dayOfMonth     Int?             @default(1)
+  dayOfMonthUTC  Int?
+  hour           Int?             @default(8)
+  hourUTC        Int?
+  dailyUTCOffset Int?             @default(0)
+  isEnabled      Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+}
+
+model Organization {
+  id                String   @id @default(dbgenerated("nanoid(14)"))
+  name              String?
+  slackId           String   @unique
+  isSlackEnterprise Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  teams                    Team[]
+  members                  User[]
+  integrationAccounts      IntegrationAccount[]
+  integrationInstallations IntegrationInstallation[]
+  activities               Activity[]
+}
+
+model Team {
+  id             String   @id @default(dbgenerated("nanoid(14)"))
+  name           String?
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members             TeamMembership[]
+  activities          Activity[]
+  activitiesSummaries ActivitiesSummary[]
+  teamUpdateMessages  TeamUpdateMessage[]
+}
+
+model TeamMembership {
+  id        String   @id @default(dbgenerated("nanoid(14)"))
+  teamId    String
+  userId    String
+  addedById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team    Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user    User  @relation("TeamMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  addedBy User? @relation("AddedTeamMembers", fields: [addedById], references: [id])
+
+  @@unique([teamId, userId])
+}
+
+model IntegrationInstallation {
+  id              String   @id @default(dbgenerated("nanoid(14)"))
+  integrationName String
+  externalId      String
+  accountName     String?
+  data            Json?
+  accessToken     String?
+  organizationId  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationName, externalId])
+}
+
+model IntegrationAccount {
+  id              String   @id @default(dbgenerated("nanoid(14)"))
+  integrationName String
+  externalId      String
+  username        String?
+  name            String?
+  email           String?
+  pictureUrl      String?
+  rawAuthData     Json?
+  rawProfileData  Json?
+  accessToken     String?
+  refreshToken    String?
+  expiresIn       Int?
+  scope           String?
+  userId          String
+  organizationId  String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationName, externalId, organizationId])
+  @@unique([integrationName, userId, organizationId])
+}
+
+model IncomingWebhook {
+  id           String    @id @default(dbgenerated("nanoid(14)"))
+  event        String
+  source       String
+  externalId   String
+  data         Json?
+  failed       Boolean   @default(false)
+  failedReason String?
+  proceessedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Activity {
+  id             String   @id @default(dbgenerated("nanoid(14)"))
+  summary        String?
+  activityData   Json?
+  activityDate   DateTime
+  userId         String?
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teams        Team[]
+  user         User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  summaries    ActivitiesSummary[]
+}
+
+model ActivitiesSummary {
+  id        String   @id @default(dbgenerated("nanoid(14)"))
+  summary   String?
+  teamId    String
+  forUserId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities Activity[]
+  team       Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  forUser    User       @relation(fields: [forUserId], references: [id], onDelete: Cascade)
+}
+
+model TeamUpdateMessage {
+  id        String   @id @default(dbgenerated("nanoid(14)"))
+  teamId    String
+  sentToId  String
+  message   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sentTo User @relation(fields: [sentToId], references: [id], onDelete: Cascade)
+}
