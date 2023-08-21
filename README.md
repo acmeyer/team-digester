@@ -35,3 +35,4 @@ Once you've done all the above, you should be good to go. You can then install t
 This app is very basic and simple right now and likely contains some shortcomings. Here are some of the things that would be good to add in the future:
 - The ability to handle responses and messages from users. Using OpenAI's API, it should receive a user's message, give the AI functions to choose from to help get answers, and then finally respond back to users
 - Better handle too large of updates. Right now, the app does not do any sort of handling of content that might be too large for the models, it just fails. It would be better to chunk out the activities and updates into smaller messages, summarize those, and then summarize those summaries. This is likely the only way to handle repos with lots of activity.
+- Update it so if there is no activity for a specific team member or the entire team it says that rather than hallucinating 
