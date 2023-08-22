@@ -251,7 +251,7 @@ Activities: ${activity.map((a) => a.summary).join('\n\n* ')}`,
       {
         role: 'user',
         // eslint-disable-next-line max-len
-        content: `Please summarize the following activities for a team. This message will be sent to each team member.
+        content: `Please summarize the following activities for a team. This message will be sent to each team member. If a team member has no activities, say so, don't make something up.
 
 Activities: ${teamActivity.map((a) => a.summary).join('\n\n* ')}`,
       },
