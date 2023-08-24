@@ -10,6 +10,7 @@ import {
 } from '../lib/prompts';
 import { capitalize } from 'lodash';
 import { INTEGRATION_NAMES } from '../lib/constants';
+import { Config } from '../config';
 
 // Manually run the task here https://console.cloud.google.com/cloudscheduler
 export const notifications = onSchedule('0 * * * *', async (event) => {
@@ -205,7 +206,7 @@ const sendNotification = async ({
 
       // Send activity to OpenAI for summarization
       const chatCompletion = await openAI.chat.completions.create({
-        model: 'gpt-3.5-turbo-16k',
+        model: Config.SUMMARIZATION_MODEL,
         messages: [
           {
             role: 'system',
@@ -242,7 +243,7 @@ Activities: ${activity.map((a) => a.summary).join('\n\n* ')}`,
 
   // Compile team summmaries and send the message to the user and store it in database
   const chatCompletion = await openAI.chat.completions.create({
-    model: 'gpt-3.5-turbo-16k',
+    model: Config.SUMMARIZATION_MODEL,
     messages: [
       {
         role: 'system',

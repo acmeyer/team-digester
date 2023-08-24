@@ -1,6 +1,7 @@
 import { Activity, IncomingWebhook, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { openAI } from '../lib/openai';
+import { Config } from '../config';
 
 export const saveIncomingWebhook = async ({
   id,
@@ -43,7 +44,7 @@ export const saveActvity = async ({
 
   // Send activity to OpenAI for summarization
   const chatCompletion = await openAI.chat.completions.create({
-    model: 'gpt-3.5-turbo-16k',
+    model: Config.SUMMARIZATION_MODEL,
     messages: [
       {
         role: 'system',
